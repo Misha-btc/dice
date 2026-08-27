@@ -1,0 +1,563 @@
+<title>Cheeky Bricky</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #fcfbf8;
+    --card: #ffffff;
+    --inner: #f6f3ee;
+    --line: #f1ede6;
+    --ink: #343433;
+    --gray: #6b6a68;
+    --red: #ff3e00;
+    --red-dk: #e03800;
+    --yellow: #ffcd6c;
+    --green: #00c978;
+    --blue: #00b1ff;
+    --orange: #ffa100;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { overflow-x: clip; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: clip;
+  }
+  ::selection { background: var(--yellow); color: var(--ink); }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  /* ── floating dice decor ── */
+  .deco { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .die {
+    position: absolute; width: 34px; height: 34px; border-radius: 8px;
+    animation: bob 6.5s ease-in-out infinite;
+  }
+  .die.d1 { background:
+    radial-gradient(circle at 50% 50%, #fff 0 11%, transparent 12%) var(--red); }
+  .die.d2 { background:
+    radial-gradient(circle at 30% 30%, #fff 0 11%, transparent 12%),
+    radial-gradient(circle at 70% 70%, #fff 0 11%, transparent 12%) var(--blue); }
+  .die.d3 { background:
+    radial-gradient(circle at 26% 26%, #fff 0 11%, transparent 12%),
+    radial-gradient(circle at 50% 50%, #fff 0 11%, transparent 12%),
+    radial-gradient(circle at 74% 74%, #fff 0 11%, transparent 12%) var(--green); }
+  .die.d5 { background:
+    radial-gradient(circle at 27% 27%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 73% 27%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 50% 50%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 27% 73%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 73% 73%, #fff 0 10%, transparent 11%) var(--orange); }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+    50% { transform: translateY(-14px) rotate(calc(var(--r, 0deg) + 3deg)); }
+  }
+  @media (max-width: 760px) { .deco { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .die { animation: none; } }
+
+  /* ── layout ── */
+  .wrap { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 56px 20px 64px; }
+
+  h1 {
+    font-size: clamp(34px, 9vw, 52px); font-weight: 800; letter-spacing: -1.5px;
+    line-height: 1.05; text-wrap: balance;
+  }
+  .title-row { position: relative; display: flex; align-items: center; gap: 14px; }
+  .tok-btn {
+    position: relative;
+    width: 42px; height: 42px; border-radius: 50%; border: 3px solid #fff;
+    background: var(--red); color: #fff; font-family: inherit;
+    font-size: 16px; font-weight: 800; cursor: pointer; flex: none;
+    box-shadow: 0 3px 10px rgba(38, 32, 26, 0.18);
+    transition: transform 0.12s ease;
+  }
+  .tok-btn:hover { transform: scale(1.08); }
+  .tok-btn:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .tok-btn .tap {
+    position: absolute; right: -12px; bottom: -13px; width: 20px; height: 20px;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 2px rgba(38, 32, 26, 0.35));
+    animation: tapbob 1.5s ease-in-out infinite;
+    transition: opacity 0.15s ease;
+  }
+  .tok-btn .tap svg {
+    display: block; width: 100%; height: 100%;
+    transform: rotate(-20deg); /* a cursor drifts in at an angle, not dead-straight */
+  }
+  /* the real cursor is here — the fake one bows out (also kills the blurry
+     scale artifact from the button's hover transform) */
+  .tok-btn:hover .tap, .tok-btn:focus-visible .tap { opacity: 0; }
+  .tok-btn.discovered .tap { display: none; }
+  @keyframes tapbob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  @media (prefers-reduced-motion: reduce) { .tok-btn .tap { animation: none; } }
+  .picker {
+    position: absolute; left: 0; top: 100%; margin-top: 10px; z-index: 20;
+    display: flex; gap: 8px; align-items: center;
+    background: #fff; border-radius: 999px; padding: 9px 12px;
+    box-shadow: 0 10px 30px rgba(38, 32, 26, 0.18), 0 0 0 1.5px var(--line);
+    opacity: 0; transform: translateY(6px) scale(0.92); transform-origin: 24px 0;
+    pointer-events: none; transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+  .picker.open { opacity: 1; transform: none; pointer-events: auto; }
+  .picker button {
+    position: relative; width: 38px; height: 38px; border-radius: 50%;
+    border: none; color: #fff; font-family: inherit; font-size: 14px;
+    font-weight: 800; cursor: pointer; transition: transform 0.12s ease;
+  }
+  .picker button:hover, .picker button:focus-visible {
+    transform: scale(1.35) translateY(-5px); outline: none; z-index: 1;
+  }
+  .picker button::after {
+    content: attr(data-sym); position: absolute; left: 50%; top: -21px;
+    transform: translateX(-50%); font-size: 9px; font-weight: 800;
+    letter-spacing: 0.3px; background: var(--ink); color: #fff;
+    border-radius: 999px; padding: 2px 7px; opacity: 0; white-space: nowrap;
+    transition: opacity 0.12s ease; pointer-events: none;
+  }
+  .picker button:hover::after, .picker button:focus-visible::after { opacity: 1; }
+  .picker button.cur { box-shadow: 0 0 0 3px var(--yellow); }
+  @media (prefers-reduced-motion: reduce) {
+    .picker, .picker button, .tok-btn { transition: none; }
+  }
+  .sub { font-size: 15px; color: var(--gray); font-weight: 500; margin: 8px 0 24px; }
+
+  /* ── widget ── */
+  .widget {
+    background: var(--card); border-radius: 28px; padding: 14px;
+    box-shadow: 0 10px 30px rgba(38, 32, 26, 0.08), 0 1px 0 rgba(38, 32, 26, 0.03);
+  }
+  .block { background: var(--inner); border-radius: 20px; padding: 18px 18px 16px; }
+  .block + .block { margin-top: 10px; }
+  .block-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; font-weight: 600; color: var(--gray); margin-bottom: 6px;
+  }
+
+  .chance-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .chance-val { font-size: 40px; font-weight: 700; letter-spacing: -1px; }
+  .chance-val small { font-size: 20px; color: var(--gray); font-weight: 600; }
+  .mult-pill {
+    background: var(--yellow); color: var(--ink); border-radius: 999px;
+    font-size: 15px; font-weight: 800; padding: 8px 16px; white-space: nowrap;
+  }
+
+  /* slider */
+  .slider-wrap { position: relative; margin-top: 16px; padding-top: 22px; }
+  .roll-dot {
+    position: absolute; top: 0; transform: translateX(-50%);
+    font-size: 11px; font-weight: 800; color: #fff;
+    background: var(--gray); border-radius: 999px; padding: 2px 8px;
+    display: none; white-space: nowrap;
+  }
+  .roll-dot.show { display: block; }
+  .roll-dot.win { background: var(--green); }
+  input[type="range"] {
+    display: block; width: 100%; height: 10px; border-radius: 999px;
+    appearance: none; -webkit-appearance: none; outline: none; cursor: pointer;
+    background: linear-gradient(90deg, var(--red) 50%, #e9e4db 50%);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--red);
+    box-shadow: 0 2px 6px rgba(38, 32, 26, 0.2); cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--red);
+    box-shadow: 0 2px 6px rgba(38, 32, 26, 0.2); cursor: pointer;
+  }
+  input[type="range"]:focus-visible { box-shadow: 0 0 0 3px var(--yellow); }
+  .slider-ends {
+    display: flex; justify-content: space-between;
+    font-size: 11px; font-weight: 600; color: var(--gray); margin-top: 8px;
+  }
+
+  /* mode switch */
+  .mode {
+    display: flex; gap: 4px; background: #fff; border-radius: 999px; padding: 4px;
+    box-shadow: inset 0 0 0 1.5px var(--line); margin-bottom: 14px;
+  }
+  .mode button {
+    flex: 1; font-family: inherit; font-size: 13px; font-weight: 800;
+    border: none; border-radius: 999px; padding: 9px 0; cursor: pointer;
+    background: none; color: var(--gray);
+  }
+  .mode button.on { background: var(--ink); color: #fff; }
+  .mode button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  /* rolls stepper */
+  .rolls-line { display: flex; align-items: center; gap: 14px; }
+  .step-btn {
+    width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+    background: #fff; color: var(--ink); font-size: 22px; font-weight: 700;
+    box-shadow: 0 1px 4px rgba(38, 32, 26, 0.12); line-height: 1;
+    font-family: inherit;
+  }
+  .step-btn:hover { background: var(--ink); color: #fff; }
+  .step-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .rolls-num { flex: 1; text-align: center; font-size: 40px; font-weight: 700; letter-spacing: -1px; }
+  .rolls-num small { display: block; font-size: 12px; font-weight: 600; color: var(--gray); letter-spacing: 0.3px; margin-top: -4px; }
+  .mint-sub { font-size: 13px; font-weight: 600; color: var(--gray); margin-top: 10px; text-align: center; }
+  .mint-sub b { color: var(--ink); font-weight: 700; }
+
+  /* bet field (Your bet pane) */
+  .bet-line { display: flex; align-items: center; gap: 10px; }
+  .bet-line input {
+    flex: 1; min-width: 60px; background: none; border: none; outline: none;
+    font-family: inherit; font-size: 32px; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.5px;
+  }
+  .tok-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: #fff; border-radius: 999px; padding: 8px 14px;
+    font-size: 15px; font-weight: 800; box-shadow: 0 1px 4px rgba(38, 32, 26, 0.08);
+  }
+  .tok-pill .c { width: 18px; height: 18px; border-radius: 50%; background: var(--green); }
+  .maxb {
+    font-family: inherit; font-size: 11px; font-weight: 800; color: var(--ink);
+    background: var(--yellow); border: none; border-radius: 7px; padding: 5px 9px; cursor: pointer;
+  }
+  .maxb:hover { background: var(--orange); }
+  .maxb:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  /* roll button */
+  .roll-btn {
+    display: block; width: 100%; margin-top: 10px;
+    background: var(--red); color: #fff; border: none; border-radius: 20px;
+    font-family: inherit; font-size: 19px; font-weight: 800; letter-spacing: 1px;
+    padding: 18px 0; cursor: pointer; transition: all 0.15s ease;
+  }
+  .roll-btn:hover { background: var(--red-dk); transform: translateY(-2px); }
+  .roll-btn:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .roll-btn:disabled { opacity: 0.6; transform: none; cursor: wait; }
+  .roll-btn.won { background: var(--green); }
+  @media (prefers-reduced-motion: reduce) { .roll-btn { transition: none; } }
+
+  .result {
+    text-align: center; font-size: 14px; font-weight: 600; color: var(--gray);
+    margin-top: 12px; min-height: 22px;
+  }
+  .result b.win { color: var(--green); }
+  .result b.lose { color: var(--ink); }
+  .seq { margin-top: 4px; font-size: 12px; font-weight: 700; }
+  .seq span { display: inline-block; margin: 0 3px; }
+  .seq .hit { color: var(--green); }
+  .seq .miss { color: var(--gray); opacity: 0.7; }
+
+  /* below widget */
+  .won-line {
+    text-align: center; margin-top: 18px; font-size: 14px; font-weight: 600; color: var(--gray);
+  }
+  .won-line b { color: var(--ink); font-weight: 800; }
+  .lp-line {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    flex-wrap: wrap; margin-top: 24px; font-size: 14px; font-weight: 500; color: var(--gray);
+  }
+  .lp-line a { color: var(--ink); font-weight: 700; text-decoration: none; }
+  .lp-line a:hover { color: var(--red); }
+  .fine {
+    margin-top: 34px; padding-top: 14px; border-top: 1.5px solid var(--line);
+    font-size: 12px; font-weight: 500; color: var(--gray); line-height: 1.7;
+  }
+</style>
+
+<div class="deco" aria-hidden="true">
+  <span class="die d1" style="left:6%;  top:16%; --r:-10deg;"></span>
+  <span class="die d2" style="right:7%; top:12%; --r:12deg;  animation-delay:1s;"></span>
+  <span class="die d3" style="left:9%;  top:66%; --r:8deg;   animation-delay:0.5s;"></span>
+  <span class="die d5" style="right:8%; top:60%; --r:-7deg;  animation-delay:1.5s;"></span>
+  <span class="die d2" style="left:16%; top:88%; --r:14deg;  width:22px; height:22px; animation-delay:0.8s;"></span>
+  <span class="die d1" style="right:15%;top:86%; --r:-14deg; width:22px; height:22px; animation-delay:0.3s;"></span>
+</div>
+
+<div class="wrap">
+  <div class="title-row">
+    <h1>Cheeky Bricky.</h1>
+    <button class="tok-btn" id="tok-btn" aria-haspopup="menu" aria-expanded="false"
+            aria-label="Choose table token" title="Choose table token"><span id="tok-letter">B</span><span class="tap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.2 1.8c-.9 0-1.6.7-1.6 1.6v9.8l-1.9-1.9c-.7-.7-1.8-.7-2.4 0-.6.6-.7 1.6-.1 2.3l4 4.9c1 1.2 2.5 1.9 4.1 1.9h2.3c2.5 0 4.6-1.7 5.1-4.1l.9-4.1c.2-.9-.4-1.8-1.3-2-.8-.2-1.6.2-1.9 1l-.2.5-.6-.1.1-1.2c.1-.9-.6-1.7-1.5-1.8-.8-.1-1.6.5-1.7 1.3l-.1 1-.6-.1V3.4c0-.9-.7-1.6-1.6-1.6z" fill="#ffffff" stroke="#343433" stroke-width="1.5" stroke-linejoin="round"/></svg></span></button>
+    <div class="picker" id="picker" role="menu" aria-label="Table token"></div>
+  </div>
+  <p class="sub">Land under your chance — paid instantly.</p>
+
+  <div class="widget">
+    <div class="block">
+      <div class="block-head"><span>Win chance</span><span>Pays</span></div>
+      <div class="chance-row">
+        <div class="chance-val mono"><span id="chance">50.00</span><small> %</small></div>
+        <div class="mult-pill mono">×<span id="mult">1.900</span></div>
+      </div>
+      <div class="slider-wrap">
+        <div class="roll-dot mono" id="roll-dot">67.3</div>
+        <input type="range" id="slider" min="656" max="64238" value="32768" step="1" aria-label="Win chance" />
+      </div>
+      <div class="slider-ends"><span>rarely, big</span><span>often, small</span></div>
+    </div>
+
+    <div class="block">
+      <div class="mode" role="tablist">
+        <button id="mode-free" class="on" role="tab" aria-selected="true">Free rolls</button>
+        <button id="mode-bet" role="tab" aria-selected="false">Your bet</button>
+      </div>
+
+      <div id="pane-free">
+        <div class="block-head"><span>Rolls</span><span>1 roll = 1 free mint</span></div>
+        <div class="rolls-line">
+          <button class="step-btn" id="minus" aria-label="Fewer rolls">−</button>
+          <div class="rolls-num mono"><span id="count">5</span><small>mints</small></div>
+          <button class="step-btn" id="plus" aria-label="More rolls">+</button>
+        </div>
+        <div class="mint-sub mono">Mint size splits the block between minters — last mint <b id="last-mint">2.41</b> <span class="sym">BRICK</span></div>
+      </div>
+
+      <div id="pane-bet" hidden>
+        <div class="block-head"><span>Your bet</span><span class="mono">Balance: <span id="bal">50.00</span></span></div>
+        <div class="bet-line">
+          <input id="bet" class="mono" type="text" inputmode="decimal" value="1.00" aria-label="Bet amount" />
+          <button class="maxb" id="max">MAX</button>
+          <span class="tok-pill"><span class="c" id="pill-dot"></span><span id="pill-sym">BRICK</span></span>
+        </div>
+        <div class="mint-sub mono" style="text-align:left;">Win pays <b id="pays">1.90</b> · max bet <b id="maxbet">55.55</b></div>
+      </div>
+    </div>
+
+    <button class="roll-btn" id="roll">ROLL ×5</button>
+    <div class="result" id="result" role="status"></div>
+    <div class="seq mono" id="seq"></div>
+  </div>
+
+  <div class="won-line">You've won <b class="mono" id="won">0.00</b> <span class="sym">BRICK</span> so far</div>
+
+  <div class="lp-line">
+    <span>The house is 100% LP-owned — all 1% goes to stakers.</span>
+    <a href="https://claude.ai/code/artifact/eda306ac-57cf-4a37-81ec-4ed22f9f044a">Become the house →</a>
+  </div>
+
+  <p class="fine">
+    Provably fair: the roll is sha256(blockhash ‖ txid) of the block that mines your bet —
+    unknowable in advance, settled atomically. You pick a number of mints, never an amount:
+    each transaction chains mint → roll and stakes whatever the mint yields; anything over
+    the table cap comes back to your wallet. Immutable contract on ALKANES, the 1% edge is
+    fixed forever. Design mock: simulated mints and rolls, real contract math.
+  </p>
+</div>
+
+<script>
+(function () {
+  var BPS = 10000, EDGE = 100, SPACE = 65536;
+  var PN = (BPS - EDGE) * SPACE;
+  var UNIT = 1e8;
+  var EMISSION = 5 * UNIT;              // mock per-block emission
+  // Each token = its own factory instance of the game (own bank, own table).
+  var TOKENS = [
+    { sym: "BRICK",  letter: "B", color: "#ff3e00", bank: 2000 * UNIT, balance: 50 * UNIT,  won: 0 },
+    { sym: "DIESEL", letter: "D", color: "#00c978", bank: 8400 * UNIT, balance: 120 * UNIT, won: 0 },
+    { sym: "frBTC",  letter: "\u20bf", color: "#00b1ff", bank: 3.1 * UNIT,  balance: 0.2 * UNIT, won: 0 },
+    { sym: "FIRE",   letter: "F", color: "#5f5def", bank: 950 * UNIT,  balance: 30 * UNIT,  won: 0 },
+    { sym: "FROST",  letter: "S", color: "#ffa100", bank: 410 * UNIT,  balance: 0,          won: 0 },
+  ];
+  var cur = 0;
+  function bank()    { return TOKENS[cur].bank; }
+  function setBank(v){ TOKENS[cur].bank = v; }
+  var count = 5, mode = "free";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var slider = $("slider"), rollBtn = $("roll"), betInput = $("bet");
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function fmt(u) {
+    return (u / UNIT).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function pct1(n) { return (n / SPACE * 100).toFixed(1); }
+  function payoutTotal(a, t) { return Math.floor(a * PN / (BPS * t)); }
+  function maxBet(t) {
+    var cap = Math.floor(bank() * EDGE / (2 * BPS));
+    return Math.floor(cap * BPS * t / (PN - BPS * t));
+  }
+  function betUnits() {
+    var v = parseFloat(betInput.value.replace(",", "."));
+    return isFinite(v) && v > 0 ? Math.round(v * UNIT) : 0;
+  }
+
+  function refresh() {
+    var t = +slider.value, pct = t / SPACE * 100;
+    $("chance").textContent = pct.toFixed(2);
+    $("mult").textContent = (PN / (BPS * t)).toFixed(3);
+    // Fill must track the THUMB, not the raw value: the slider's value range
+    // is [min,max] (not 0..65536), and the thumb center only travels
+    // (width - thumbWidth), so compensate half the 26px thumb at the ends.
+    var f = (t - slider.min) / (slider.max - slider.min);
+    var stop = "calc(" + (f * 100) + "% + " + ((0.5 - f) * 26).toFixed(1) + "px)";
+    slider.style.background =
+      "linear-gradient(90deg, var(--red) " + stop + ", #e9e4db " + stop + ")";
+    $("count").textContent = count;
+    var mb = maxBet(t);
+    $("maxbet").textContent = fmt(mb);
+    $("pays").textContent = fmt(payoutTotal(Math.min(betUnits(), mb), t));
+    $("bal").textContent = fmt(TOKENS[cur].balance);
+    $("won").textContent = fmt(TOKENS[cur].won);
+    var T = TOKENS[cur];
+    $("tok-letter").textContent = T.letter;
+    $("tok-btn").style.background = T.color;
+    $("pill-dot").style.background = T.color;
+    $("pill-sym").textContent = T.sym;
+    document.querySelectorAll(".sym").forEach(function (el) { el.textContent = T.sym; });
+    rollBtn.textContent = mode === "free"
+      ? (count === 1 ? "ROLL" : "ROLL ×" + count)
+      : "ROLL";
+  }
+
+  function setMode(m) {
+    mode = m;
+    $("mode-free").classList.toggle("on", m === "free");
+    $("mode-bet").classList.toggle("on", m === "bet");
+    $("mode-free").setAttribute("aria-selected", m === "free");
+    $("mode-bet").setAttribute("aria-selected", m === "bet");
+    $("pane-free").hidden = m !== "free";
+    $("pane-bet").hidden = m !== "bet";
+    refresh();
+  }
+  $("mode-free").addEventListener("click", function () { setMode("free"); });
+  $("mode-bet").addEventListener("click", function () { setMode("bet"); });
+
+  slider.addEventListener("input", refresh);
+  betInput.addEventListener("input", refresh);
+  $("minus").addEventListener("click", function () { count = Math.max(1, count - 1); refresh(); });
+  $("plus").addEventListener("click", function () { count = Math.min(20, count + 1); refresh(); });
+  $("max").addEventListener("click", function () {
+    betInput.value = (Math.min(maxBet(+slider.value), TOKENS[cur].balance) / UNIT).toFixed(2);
+    refresh();
+  });
+
+  function animateRoll(final, onDone) {
+    var dot = $("roll-dot");
+    dot.className = "roll-dot mono show";
+    var ticks = reduced ? 1 : 7, j = 0;
+    (function step() {
+      var r = j < ticks - 1 ? Math.floor(Math.random() * SPACE) : final;
+      var df = Math.min(1, Math.max(0, (r - slider.min) / (slider.max - slider.min)));
+      dot.style.left = "calc(" + (df * 100) + "% + " + ((0.5 - df) * 26).toFixed(1) + "px)";
+      dot.textContent = pct1(r);
+      if (++j < ticks) { setTimeout(step, 34 + j * 10); return; }
+      onDone(dot);
+    })();
+  }
+
+  function addChip(win, final) {
+    var chip = document.createElement("span");
+    chip.className = win ? "hit" : "miss";
+    chip.textContent = pct1(final);
+    $("seq").appendChild(chip);
+  }
+
+  rollBtn.addEventListener("click", function () {
+    var t = +slider.value;
+    rollBtn.disabled = true;
+    rollBtn.classList.remove("won");
+    $("result").textContent = "";
+    $("seq").textContent = "";
+
+    if (mode === "bet") {
+      var asked = Math.min(betUnits(), TOKENS[cur].balance);
+      if (asked < 0.001 * UNIT) { rollBtn.disabled = false; return; }
+      var eff = Math.min(asked, maxBet(t));
+      var clamped = eff < asked;
+      var final = Math.floor(Math.random() * SPACE);
+      animateRoll(final, function (dot) {
+        var win = final < t;
+        var paid = win ? payoutTotal(eff, t) : 0;
+        TOKENS[cur].balance += win ? paid - eff : -eff;
+        setBank(bank() + (win ? eff - paid : eff));
+        if (win) { won += paid; dot.classList.add("win"); }
+        addChip(win, final);
+        rollBtn.disabled = false;
+        if (win) rollBtn.classList.add("won");
+        $("result").innerHTML = (win
+          ? 'Rolled ' + pct1(final) + ' — <b class="win">you won +' + fmt(paid - eff) + " " + TOKENS[cur].sym + "</b>"
+          : 'Rolled ' + pct1(final) + ' — <b class="lose">not this time, −' + fmt(eff) + " " + TOKENS[cur].sym + "</b>")
+          + (clamped ? "<br />Bet fit to the cap: " + fmt(asked) + " → " + fmt(eff) + ", excess returned." : "");
+        refresh();
+      });
+      return;
+    }
+
+    // free rolls: a series of mint-and-roll transactions
+    var i = 0, hits = 0, net = 0, lastMint = 0;
+    (function oneRoll() {
+      // A fresh mint: the block's emission split between however many minters
+      // showed up (unknowable in advance — that's why you pick mints, not amounts).
+      var minters = 1 + Math.floor(Math.random() * 7);
+      var mint = Math.floor(EMISSION / minters);
+      lastMint = mint;
+      var eff = Math.min(mint, maxBet(t));
+      var refund = mint - eff;
+      var final = Math.floor(Math.random() * SPACE);
+      animateRoll(final, function (dot) {
+        var win = final < t;
+        var paid = win ? payoutTotal(eff, t) : 0;
+        if (win) { hits++; net += paid + refund; TOKENS[cur].won += paid; TOKENS[cur].balance += paid + refund; }
+        else { net += refund; TOKENS[cur].balance += refund; }
+        setBank(bank() + (win ? eff - paid : eff));
+        if (win) dot.classList.add("win");
+        addChip(win, final);
+
+        if (++i < count) { setTimeout(oneRoll, reduced ? 0 : 220); return; }
+        rollBtn.disabled = false;
+        if (hits > 0) rollBtn.classList.add("won");
+        $("last-mint").textContent = fmt(lastMint);
+        $("result").innerHTML = hits > 0
+          ? count + (count === 1 ? " roll" : " rolls") + ", " + hits + (hits === 1 ? " hit — " : " hits — ")
+            + '<b class="win">+' + fmt(net) + " " + TOKENS[cur].sym + " to your wallet</b>"
+          : count + (count === 1 ? " roll" : " rolls") + ", no hits — <b class=\"lose\">the mints went to the house</b>";
+        refresh();
+      });
+    })();
+  });
+
+  // \u2500\u2500 token picker (reactions-style) \u2500\u2500
+  var picker = $("picker"), tokBtn = $("tok-btn");
+  TOKENS.forEach(function (t, i) {
+    var b = document.createElement("button");
+    b.setAttribute("role", "menuitem");
+    b.setAttribute("data-sym", t.sym);
+    b.setAttribute("aria-label", "Play in " + t.sym);
+    b.style.background = t.color;
+    b.textContent = t.letter;
+    b.addEventListener("click", function () {
+      cur = i;
+      closePicker();
+      $("result").textContent = "";
+      $("seq").textContent = "";
+      $("roll-dot").className = "roll-dot mono";
+      picker.querySelectorAll("button").forEach(function (x, j) {
+        x.classList.toggle("cur", j === cur);
+      });
+      refresh();
+    });
+    if (i === cur) b.classList.add("cur");
+    picker.appendChild(b);
+  });
+  function closePicker() {
+    picker.classList.remove("open");
+    tokBtn.setAttribute("aria-expanded", "false");
+  }
+  tokBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    tokBtn.classList.add("discovered"); // the finger hint has done its job
+    var open = picker.classList.toggle("open");
+    tokBtn.setAttribute("aria-expanded", open);
+  });
+  document.addEventListener("click", function (e) {
+    if (!picker.contains(e.target)) closePicker();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closePicker();
+  });
+
+  refresh();
+})();
+</script>

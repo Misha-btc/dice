@@ -1,0 +1,12 @@
+[package]
+name = "cheekyd-game-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+metashrew-support = { workspace = true }
+alkanes-support = { workspace = true }
+alkanes-runtime = { workspace = true }
+bitcoin = { workspace = true }
+cheekyd-math = { workspace = true }

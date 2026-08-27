@@ -1,0 +1,474 @@
+<title>Cheeky Bricky House</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #fcfbf8;
+    --card: #ffffff;
+    --inner: #f6f3ee;
+    --line: #f1ede6;
+    --ink: #343433;
+    --gray: #6b6a68;
+    --red: #ff3e00;
+    --red-dk: #e03800;
+    --yellow: #ffcd6c;
+    --green: #00c978;
+    --blue: #00b1ff;
+    --orange: #ffa100;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { overflow-x: clip; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: clip;
+  }
+  ::selection { background: var(--yellow); color: var(--ink); }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  /* floating dice */
+  .deco { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .die {
+    position: absolute; width: 34px; height: 34px; border-radius: 8px;
+    animation: bob 6.5s ease-in-out infinite;
+  }
+  .die.d2 { background:
+    radial-gradient(circle at 30% 30%, #fff 0 11%, transparent 12%),
+    radial-gradient(circle at 70% 70%, #fff 0 11%, transparent 12%) var(--blue); }
+  .die.d3 { background:
+    radial-gradient(circle at 26% 26%, #fff 0 11%, transparent 12%),
+    radial-gradient(circle at 50% 50%, #fff 0 11%, transparent 12%),
+    radial-gradient(circle at 74% 74%, #fff 0 11%, transparent 12%) var(--green); }
+  .die.d5 { background:
+    radial-gradient(circle at 27% 27%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 73% 27%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 50% 50%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 27% 73%, #fff 0 10%, transparent 11%),
+    radial-gradient(circle at 73% 73%, #fff 0 10%, transparent 11%) var(--orange); }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+    50% { transform: translateY(-14px) rotate(calc(var(--r, 0deg) + 3deg)); }
+  }
+  @media (max-width: 760px) { .deco { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .die { animation: none; } }
+
+  .wrap { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 44px 20px 64px; }
+
+  .back {
+    display: inline-block; font-size: 13px; font-weight: 700; color: var(--gray);
+    text-decoration: none; margin-bottom: 24px;
+  }
+  .back:hover { color: var(--red); }
+
+  h1 {
+    font-size: clamp(34px, 9vw, 52px); font-weight: 800; letter-spacing: -1.5px;
+    line-height: 1.05; text-wrap: balance;
+  }
+  .title-row { position: relative; display: flex; align-items: center; gap: 14px; }
+  .tok-btn {
+    position: relative;
+    width: 42px; height: 42px; border-radius: 50%; border: 3px solid #fff;
+    background: var(--red); color: #fff; font-family: inherit;
+    font-size: 16px; font-weight: 800; cursor: pointer; flex: none;
+    box-shadow: 0 3px 10px rgba(38, 32, 26, 0.18);
+    transition: transform 0.12s ease;
+  }
+  .tok-btn:hover { transform: scale(1.08); }
+  .tok-btn:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .tok-btn .tap {
+    position: absolute; right: -12px; bottom: -13px; width: 20px; height: 20px;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 2px rgba(38, 32, 26, 0.35));
+    animation: tapbob 1.5s ease-in-out infinite;
+    transition: opacity 0.15s ease;
+  }
+  .tok-btn .tap svg {
+    display: block; width: 100%; height: 100%;
+    transform: rotate(-20deg); /* a cursor drifts in at an angle, not dead-straight */
+  }
+  /* the real cursor is here — the fake one bows out (also kills the blurry
+     scale artifact from the button's hover transform) */
+  .tok-btn:hover .tap, .tok-btn:focus-visible .tap { opacity: 0; }
+  .tok-btn.discovered .tap { display: none; }
+  @keyframes tapbob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .picker {
+    position: absolute; left: 0; top: 100%; margin-top: 10px; z-index: 20;
+    display: flex; gap: 8px; align-items: center;
+    background: #fff; border-radius: 999px; padding: 9px 12px;
+    box-shadow: 0 10px 30px rgba(38, 32, 26, 0.18), 0 0 0 1.5px var(--line);
+    opacity: 0; transform: translateY(6px) scale(0.92); transform-origin: 24px 0;
+    pointer-events: none; transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+  .picker.open { opacity: 1; transform: none; pointer-events: auto; }
+  .picker button {
+    position: relative; width: 38px; height: 38px; border-radius: 50%;
+    border: none; color: #fff; font-family: inherit; font-size: 14px;
+    font-weight: 800; cursor: pointer; transition: transform 0.12s ease;
+  }
+  .picker button:hover, .picker button:focus-visible {
+    transform: scale(1.35) translateY(-5px); outline: none; z-index: 1;
+  }
+  .picker button::after {
+    content: attr(data-sym); position: absolute; left: 50%; top: -21px;
+    transform: translateX(-50%); font-size: 9px; font-weight: 800;
+    letter-spacing: 0.3px; background: var(--ink); color: #fff;
+    border-radius: 999px; padding: 2px 7px; opacity: 0; white-space: nowrap;
+    transition: opacity 0.12s ease; pointer-events: none;
+  }
+  .picker button:hover::after, .picker button:focus-visible::after { opacity: 1; }
+  .picker button.cur { box-shadow: 0 0 0 3px var(--yellow); }
+  @media (prefers-reduced-motion: reduce) {
+    .picker, .picker button, .tok-btn, .tok-btn .tap { transition: none; animation: none; }
+  }
+  .sub { font-size: 16px; color: var(--gray); font-weight: 500; margin: 12px 0 28px; text-wrap: balance; }
+
+  .widget {
+    background: var(--card); border-radius: 28px; padding: 14px;
+    box-shadow: 0 10px 30px rgba(38, 32, 26, 0.08), 0 1px 0 rgba(38, 32, 26, 0.03);
+  }
+  .block { background: var(--inner); border-radius: 20px; padding: 18px 18px 16px; }
+  .block + .block { margin-top: 10px; }
+  .block-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; font-weight: 600; color: var(--gray); margin-bottom: 6px;
+  }
+
+  /* bank stats */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #fff; border-radius: 14px; padding: 11px 14px; }
+  .stat .k { font-size: 11px; font-weight: 600; color: var(--gray); letter-spacing: 0.2px; }
+  .stat .v { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; margin-top: 1px; }
+  .stat .v small { font-size: 12px; color: var(--gray); font-weight: 600; }
+  .stat .v.up { color: var(--green); }
+
+  /* live feed line */
+  .live {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; font-weight: 600; color: var(--gray); margin-top: 12px;
+    min-height: 20px;
+  }
+  .live .pulse {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .live .pulse { animation: none; } }
+  .live b.plus { color: var(--green); }
+  .live b.minus { color: var(--red); }
+
+  /* mode switch */
+  .mode {
+    display: flex; gap: 4px; background: #fff; border-radius: 999px; padding: 4px;
+    box-shadow: inset 0 0 0 1.5px var(--line); margin-bottom: 14px;
+  }
+  .mode button {
+    flex: 1; font-family: inherit; font-size: 13px; font-weight: 800;
+    border: none; border-radius: 999px; padding: 9px 0; cursor: pointer;
+    background: none; color: var(--gray);
+  }
+  .mode button.on { background: var(--ink); color: #fff; }
+  .mode button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  .amt-line { display: flex; align-items: center; gap: 10px; }
+  .amt-line input {
+    flex: 1; min-width: 60px; background: none; border: none; outline: none;
+    font-family: inherit; font-size: 32px; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.5px;
+  }
+  .tok-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: #fff; border-radius: 999px; padding: 8px 14px;
+    font-size: 15px; font-weight: 800; box-shadow: 0 1px 4px rgba(38, 32, 26, 0.08);
+    white-space: nowrap;
+  }
+  .tok-pill .c { width: 18px; height: 18px; border-radius: 50%; background: var(--green); }
+  .tok-pill .c.chkd { background: var(--yellow); }
+  .maxb {
+    font-family: inherit; font-size: 11px; font-weight: 800; color: var(--ink);
+    background: var(--yellow); border: none; border-radius: 7px; padding: 5px 9px; cursor: pointer;
+  }
+  .maxb:hover { background: var(--orange); }
+  .maxb:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .est { font-size: 13px; font-weight: 600; color: var(--gray); margin-top: 8px; }
+  .est b { color: var(--ink); font-weight: 700; }
+
+  .cta {
+    display: block; width: 100%; margin-top: 10px;
+    background: var(--red); color: #fff; border: none; border-radius: 20px;
+    font-family: inherit; font-size: 19px; font-weight: 800; letter-spacing: 1px;
+    padding: 18px 0; cursor: pointer; transition: all 0.15s ease;
+  }
+  .cta:hover { background: var(--red-dk); transform: translateY(-2px); }
+  .cta:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .cta { transition: none; } }
+
+  .result {
+    text-align: center; font-size: 14px; font-weight: 600; color: var(--gray);
+    margin-top: 12px; min-height: 22px;
+  }
+  .result b { color: var(--green); }
+
+  /* your position */
+  .pos {
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    margin-top: 22px; font-size: 14px; font-weight: 600; color: var(--gray);
+  }
+  .pos b { color: var(--ink); font-weight: 800; }
+  .pos .earn b { color: var(--green); }
+
+  /* why it can't die */
+  .why { margin-top: 34px; }
+  .why h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 10px; }
+  .why p { font-size: 13.5px; font-weight: 500; color: var(--gray); margin-bottom: 8px; }
+  .why p b { color: var(--ink); font-weight: 700; }
+
+  .fine {
+    margin-top: 30px; padding-top: 14px; border-top: 1.5px solid var(--line);
+    font-size: 12px; font-weight: 500; color: var(--gray); line-height: 1.7;
+  }
+</style>
+
+<div class="deco" aria-hidden="true">
+  <span class="die d3" style="left:6%;  top:18%; --r:-9deg;"></span>
+  <span class="die d5" style="right:7%; top:14%; --r:11deg; animation-delay:1s;"></span>
+  <span class="die d2" style="left:10%; top:70%; --r:7deg;  animation-delay:0.6s;"></span>
+  <span class="die d3" style="right:9%; top:64%; --r:-8deg; width:24px; height:24px; animation-delay:1.4s;"></span>
+</div>
+
+<div class="wrap">
+  <a class="back" href="https://claude.ai/code/artifact/306d022d-476d-4472-829f-0077f0d8c257">← Back to the game</a>
+
+  <div class="title-row">
+    <h1>Become the house.</h1>
+    <button class="tok-btn" id="tok-btn" aria-haspopup="menu" aria-expanded="false"
+            aria-label="Choose table token" title="Choose table token"><span id="tok-letter">B</span><span class="tap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.2 1.8c-.9 0-1.6.7-1.6 1.6v9.8l-1.9-1.9c-.7-.7-1.8-.7-2.4 0-.6.6-.7 1.6-.1 2.3l4 4.9c1 1.2 2.5 1.9 4.1 1.9h2.3c2.5 0 4.6-1.7 5.1-4.1l.9-4.1c.2-.9-.4-1.8-1.3-2-.8-.2-1.6.2-1.9 1l-.2.5-.6-.1.1-1.2c.1-.9-.6-1.7-1.5-1.8-.8-.1-1.6.5-1.7 1.3l-.1 1-.6-.1V3.4c0-.9-.7-1.6-1.6-1.6z" fill="#ffffff" stroke="#343433" stroke-width="1.5" stroke-linejoin="round"/></svg></span></button>
+    <div class="picker" id="picker" role="menu" aria-label="Table token"></div>
+  </div>
+  <p class="sub">Stake the bank and earn the whole 1% edge on every bet. No locks, no fees on top — in and out anytime.</p>
+
+  <div class="widget">
+    <div class="block">
+      <div class="block-head"><span>The bank</span><span><span class="sym">BRICK</span> table</span></div>
+      <div class="stats mono">
+        <div class="stat"><div class="k">Bank</div><div class="v"><span id="s-bank">2,000.00</span> <small class="sym">BRICK</small></div></div>
+        <div class="stat"><div class="k"><span class="shr">hBRICK</span> price</div><div class="v" id="s-price">1.0234</div></div>
+        <div class="stat"><div class="k">Volume, 24h</div><div class="v"><span id="s-vol">412.50</span> <small class="sym">BRICK</small></div></div>
+        <div class="stat"><div class="k">LP earn, 24h</div><div class="v up">+<span id="s-earn">20.63</span></div></div>
+      </div>
+      <div class="live mono"><span class="pulse"></span><span id="live">watching the table…</span></div>
+    </div>
+
+    <div class="block">
+      <div class="mode" role="tablist">
+        <button id="m-dep" class="on" role="tab" aria-selected="true">Deposit</button>
+        <button id="m-wd" role="tab" aria-selected="false">Withdraw</button>
+      </div>
+
+      <div id="p-dep">
+        <div class="block-head"><span>Add to the bank</span><span class="mono">Wallet: <span id="wal">100.00</span></span></div>
+        <div class="amt-line">
+          <input id="dep-amt" class="mono" type="text" inputmode="decimal" value="50.00" aria-label="Deposit amount" />
+          <button class="maxb" id="dep-max">MAX</button>
+          <span class="tok-pill"><span class="c" id="pill-dot"></span><span id="pill-sym">BRICK</span></span>
+        </div>
+        <div class="est mono">You'll mint ≈ <b id="dep-est">48.86</b> <span class="shr">hBRICK</span></div>
+      </div>
+
+      <div id="p-wd" hidden>
+        <div class="block-head"><span>Burn your shares</span><span class="mono">You hold: <span id="held">0.00</span></span></div>
+        <div class="amt-line">
+          <input id="wd-amt" class="mono" type="text" inputmode="decimal" value="0.00" aria-label="Shares to burn" />
+          <button class="maxb" id="wd-max">MAX</button>
+          <span class="tok-pill"><span class="c chkd"></span><span class="shr">hBRICK</span></span>
+        </div>
+        <div class="est mono">You'll receive ≈ <b id="wd-est">0.00</b> <span class="sym">BRICK</span></div>
+      </div>
+    </div>
+
+    <button class="cta" id="go">DEPOSIT</button>
+    <div class="result" id="result" role="status"></div>
+  </div>
+
+  <div class="pos mono">
+    <span>Your stake: <b id="pos-sh">0.00</b> <span class="shr">hBRICK</span></span>
+    <span>worth <b id="pos-val">0.00</b> <span class="sym">BRICK</span></span>
+    <span class="earn">earned <b id="pos-earn">+0.00</b></span>
+  </div>
+
+  <div class="why">
+    <h2>Why the bank can't die</h2>
+    <p><b>Capped losses.</b> No single win can take more than 0.5% of the bank, and no single block more than 20% — enforced by the contract, whatever players do.</p>
+    <p><b>Positive drift.</b> Every bet carries a 1% edge and all of it lands in the bank. The bank can dip, but its long-run growth is a theorem, not a promise.</p>
+    <p><b>No locks, no admin.</b> Shares mint and burn at the live bank price, anytime. Nobody can change the edge, pause withdrawals, or touch the bank.</p>
+  </div>
+
+  <p class="fine">
+    Shares are plain fungible alkanes — hold, transfer, or sell them. Share price only moves with
+    game results: deposits and withdrawals never change it. The edge is fixed at 1% forever —
+    nobody can change it, in either direction. Design mock: simulated table flow,
+    real contract math.
+  </p>
+</div>
+
+<script>
+(function () {
+  var UNIT = 1e8;
+  // Each token = its own factory instance of the game (own bank, own shares).
+  var TOKENS = [
+    { sym: "BRICK",  letter: "B", color: "#ff3e00", bank: 2000 * UNIT, price: 1.0234, wallet: 100 * UNIT, myShares: 0, myCost: 0, vol: 412.5 * UNIT, earn: 20.63 * UNIT },
+    { sym: "DIESEL", letter: "D", color: "#00c978", bank: 8400 * UNIT, price: 1.0710, wallet: 250 * UNIT, myShares: 0, myCost: 0, vol: 1890 * UNIT,  earn: 94.5 * UNIT },
+    { sym: "frBTC",  letter: "\u20bf", color: "#00b1ff", bank: 3.1 * UNIT, price: 1.0088, wallet: 0.4 * UNIT, myShares: 0, myCost: 0, vol: 0.9 * UNIT, earn: 0.045 * UNIT },
+    { sym: "FIRE",   letter: "F", color: "#5f5def", bank: 950 * UNIT,  price: 1.0402, wallet: 60 * UNIT,  myShares: 0, myCost: 0, vol: 240 * UNIT,  earn: 12 * UNIT },
+    { sym: "FROST",  letter: "S", color: "#ffa100", bank: 410 * UNIT,  price: 1.0011, wallet: 15 * UNIT,  myShares: 0, myCost: 0, vol: 51 * UNIT,   earn: 2.55 * UNIT },
+  ];
+  var cur = 0;
+  function T() { return TOKENS[cur]; }
+  var mode = "dep";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function fmt(u) {
+    return (u / UNIT).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function num(id) {
+    var v = parseFloat($(id).value.replace(",", "."));
+    return isFinite(v) && v > 0 ? Math.round(v * UNIT) : 0;
+  }
+
+  function refresh() {
+    var t = T();
+    $("s-bank").textContent = fmt(t.bank);
+    $("s-price").textContent = t.price.toFixed(4);
+    $("s-vol").textContent = fmt(t.vol);
+    $("s-earn").textContent = fmt(t.earn);
+    $("wal").textContent = fmt(t.wallet);
+    $("held").textContent = fmt(t.myShares);
+    $("dep-est").textContent = fmt(Math.floor(num("dep-amt") / t.price));
+    $("wd-est").textContent = fmt(Math.floor(num("wd-amt") * t.price));
+    var val = Math.floor(t.myShares * t.price);
+    $("pos-sh").textContent = fmt(t.myShares);
+    $("pos-val").textContent = fmt(val);
+    var earned = val - t.myCost;
+    $("pos-earn").textContent = (earned >= 0 ? "+" : "\u2212") + fmt(Math.abs(earned));
+    $("go").textContent = mode === "dep" ? "DEPOSIT" : "WITHDRAW";
+    $("tok-letter").textContent = t.letter;
+    $("tok-btn").style.background = t.color;
+    $("pill-dot").style.background = t.color;
+    $("pill-sym").textContent = t.sym;
+    document.querySelectorAll(".sym").forEach(function (el) { el.textContent = t.sym; });
+    document.querySelectorAll(".shr").forEach(function (el) { el.textContent = "h" + t.sym; });
+  }
+
+  function setMode(m) {
+    mode = m;
+    $("m-dep").classList.toggle("on", m === "dep");
+    $("m-wd").classList.toggle("on", m === "wd");
+    $("m-dep").setAttribute("aria-selected", m === "dep");
+    $("m-wd").setAttribute("aria-selected", m === "wd");
+    $("p-dep").hidden = m !== "dep";
+    $("p-wd").hidden = m !== "wd";
+    $("result").textContent = "";
+    refresh();
+  }
+  $("m-dep").addEventListener("click", function () { setMode("dep"); });
+  $("m-wd").addEventListener("click", function () { setMode("wd"); });
+  $("dep-amt").addEventListener("input", refresh);
+  $("wd-amt").addEventListener("input", refresh);
+  $("dep-max").addEventListener("click", function () { $("dep-amt").value = (T().wallet / UNIT).toFixed(2); refresh(); });
+  $("wd-max").addEventListener("click", function () { $("wd-amt").value = (T().myShares / UNIT).toFixed(2); refresh(); });
+
+  $("go").addEventListener("click", function () {
+    var t = T();
+    if (mode === "dep") {
+      var amt = Math.min(num("dep-amt"), t.wallet);
+      if (amt <= 0) return;
+      var minted = Math.floor(amt / t.price);
+      t.wallet -= amt; t.bank += amt;
+      t.myShares += minted; t.myCost += amt;
+      $("result").innerHTML = "Deposited " + fmt(amt) + " " + t.sym + " \u2014 minted <b>" + fmt(minted) + " h" + t.sym + "</b>. You're the house now.";
+      $("dep-amt").value = "0.00";
+    } else {
+      var sh = Math.min(num("wd-amt"), t.myShares);
+      if (sh <= 0) return;
+      var out = Math.floor(sh * t.price);
+      t.myShares -= sh; t.bank -= out; t.wallet += out;
+      t.myCost = Math.max(0, t.myCost - out);
+      $("result").innerHTML = "Burned " + fmt(sh) + " h" + t.sym + " \u2014 received <b>" + fmt(out) + " " + t.sym + "</b>.";
+      $("wd-amt").value = "0.00";
+    }
+    refresh();
+  });
+
+  // \u2500\u2500 token picker (reactions-style) \u2500\u2500
+  var picker = $("picker"), tokBtn = $("tok-btn");
+  TOKENS.forEach(function (t, i) {
+    var b = document.createElement("button");
+    b.setAttribute("role", "menuitem");
+    b.setAttribute("data-sym", t.sym);
+    b.setAttribute("aria-label", "Stake the " + t.sym + " table");
+    b.style.background = t.color;
+    b.textContent = t.letter;
+    b.addEventListener("click", function () {
+      cur = i;
+      closePicker();
+      $("result").textContent = "";
+      picker.querySelectorAll("button").forEach(function (x, j) {
+        x.classList.toggle("cur", j === cur);
+      });
+      refresh();
+    });
+    if (i === cur) b.classList.add("cur");
+    picker.appendChild(b);
+  });
+  function closePicker() {
+    picker.classList.remove("open");
+    tokBtn.setAttribute("aria-expanded", "false");
+  }
+  tokBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    tokBtn.classList.add("discovered");
+    var open = picker.classList.toggle("open");
+    tokBtn.setAttribute("aria-expanded", open);
+  });
+  document.addEventListener("click", function (e) {
+    if (!picker.contains(e.target)) closePicker();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closePicker();
+  });
+
+  // \u2500\u2500 live table simulation on the CURRENT table \u2500\u2500
+  var BPS = 10000, EDGE = 100, SPACE = 65536;
+  var PN = (BPS - EDGE) * SPACE;
+  var TARGETS = [6554, 16384, 32768, 45875, 64238];
+  function tick() {
+    var t = T();
+    var tg = TARGETS[Math.floor(Math.random() * TARGETS.length)];
+    var cap = Math.floor(t.bank * EDGE / (2 * BPS));
+    var mb = Math.floor(cap * BPS * tg / (PN - BPS * tg));
+    var bet = Math.max(Math.floor(Math.random() * mb * 0.4), Math.floor(t.bank * 0.0001));
+    var win = Math.floor(Math.random() * SPACE) < tg;
+    var payout = win ? Math.floor(bet * PN / (BPS * tg)) : 0;
+    var delta = win ? bet - payout : bet;   // house PnL
+    var oldBank = t.bank;
+    t.bank += delta;
+    t.price = t.price * t.bank / oldBank;   // bets move the price, LPs ride it
+    t.vol += bet;
+    t.earn = Math.max(0, t.earn + delta);
+    $("live").innerHTML = "roll " + (tg / SPACE * 100).toFixed(0) + "% \u00b7 " + fmt(bet)
+      + " " + t.sym + " \u2014 house <b class=\"" + (delta >= 0 ? "plus\">+" : "minus\">\u2212")
+      + fmt(Math.abs(delta)) + "</b>";
+    refresh();
+    setTimeout(tick, 2200 + Math.random() * 2600);
+  }
+  setTimeout(tick, reduced ? 2500 : 1200);
+
+  refresh();
+})();
+</script>

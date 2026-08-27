@@ -1,0 +1,181 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What This Is
+
+**CheekyD** is an instant roll-under dice game on Bitcoin via the ALKANES metaprotocol.
+The bet/bank currency is a single alkane fixed at init and immutable after —
+**mainnet: 2:490**; regtest/tests: DIESEL 2:0 (the only harness-mintable token).
+Everything is immutable — the 1% edge is a compile-time constant, there is no
+privileged capability of any kind (an auth-token edge-lowering knob existed
+2026-08-26 → removed 2026-08-27).
+One transaction = one bet = one resolution:
+the roll comes from `sha256(blockhash ‖ txid)` of the block that mines the bet
+(the algorithm runes canonized in ordinals/ord#4541), and the payout lands on the
+bet tx's own output atomically. No rounds, no claims, no NFTs, no pending
+liabilities — ever.
+
+The bankroll is **LP-owned**: deposits mint fungible CHKD shares (units of the game
+alkane itself) at the current `bank/total_shares` price; withdrawals burn them
+pro-rata, anytime. The **half-Kelly cap** (max player net profit = 0.5% of bank,
+per bet AND per block aggregate, independent of chosen odds) makes the bank
+mathematically unruinable and gives LPs a positive long-run log-drift — the "LPs
+win in the long run" guarantee is the core design goal.
+
+**Immutable by design** (same philosophy as sister project
+[arbuzino/Fireball](../arbuzino)): no proxy, no upgrade path, no admin. Every
+constant is compiled in.
+
+Read `docs/SPEC.md` for the full design (including the Kelly derivation and the
+miner-withholding analysis).
+
+## Build Commands
+
+```bash
+cargo build                                  # native build (IDE/check)
+cargo test -p cheekyd-math                   # 25 unit tests (pure math, fast)
+./scripts/build-wasms.sh                     # wasm32 build + vendor into src/tests/wasm/
+cargo test --lib -- --test-threads=1         # integration tests (alkanes harness)
+# --test-threads=1 because tests share global metashrew state
+
+# Regtest cycle (requires docker compose + alkanes-cli, see arbuzino memory):
+ALKANES_RS=~/subfrost/alkanes-rs ./scripts/reset-regtest.sh
+ALKANES_RS=~/subfrost/alkanes-rs ./scripts/deploy-regtest.sh --build
+```
+
+## Repository Layout
+
+```
+cheekyd/
+├── Cargo.toml                       # workspace + test package (git deps float;
+│                                    #  Cargo.lock is seeded from arbuzino's so both
+│                                    #  projects build identical alkanes revisions —
+│                                    #  do NOT add rev= pins, they split the dep graph)
+├── alkanes/
+│   ├── cheekyd-game/                # thin declare_alkane! wrapper → cheekyd_game.wasm
+│   ├── cheekyd-game-runtime/        # all logic (trait CheekydBase)
+│   └── cheekyd-attacker/            # TEST-ONLY fixture: wraps a Roll (flash-attack test)
+├── crates/
+│   └── cheekyd-math/                # pure math: roll, payout, Kelly, share pricing
+├── src/tests/                       # integration tests (harness copied from arbuzino)
+│   ├── helpers.rs / foundation.rs / vendor.rs / test_logger.rs
+│   ├── lp_test.rs                   # deposit/withdraw/donate wiring
+│   ├── roll_test.rs                 # the game, with DETERMINISTIC win/lose forcing
+│   ├── factory_test.rs              # per-token clones (PERMAFROST pattern)
+│   ├── flash_attack_test.rs         # Roll rejects contract callers (cheekyd-attacker fixture)
+│   ├── fuel_audit_test.rs           # every opcode ≤ 3.5M fuel floor (CreateTable is the heavy one)
+│   ├── scenario_test.rs             # same-block budget, full withdraw + revive
+│   └── wasm/                        # vendored cheekyd_game.wasm
+├── docs/SPEC.md                     # the design document — read this first
+└── scripts/                         # regtest CLI helpers (source scripts/_env.sh)
+```
+
+## Key Constants (immutable, `crates/cheekyd-math/src/lib.rs`)
+
+```rust
+EDGE_BPS  = 100          // 1%, FIXED FOREVER — ALL of it accrues to LPs (no protocol
+                         // fee, no vault bridge, no admin, no auth token)
+// per-bet cap = edge/2 of bank (half-Kelly): 0.5%
+BLOCK_BUDGET_BPS = 2000  // Σ realized net payouts per block ≤ 20% of bank (miner defense)
+MIN_WIN_MULT_BPS = 10_100 // win must pay ≥ ×1.01 → t_max = 64_238 (≈98% chance,
+                          // the classic dice-slider ceiling)
+T_MIN     = 656          // ≈1% chance; max multiplier ≈ ×98.9
+VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share revert)
+```
+
+Oversized bets are **clamped down** to fit the caps (excess returned as change,
+the roll still happens); `min_amount` on Roll opts into all-or-nothing.
+
+The Kelly result that makes this work: the growth-optimal cap on player net profit
+is `edge · bank` **regardless of the player's chosen odds** (derived in SPEC.md,
+enforced in `Roll`, proven in `cheekyd-math` tests incl. a 200k-bet no-ruin sim).
+
+## Opcodes (cheekyd-game, one contract = game + share token)
+
+| Opcode | Name | Args | Notes |
+|--------|------|------|-------|
+| 0 | `InitCheekyd` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "CheekyD House"/"CHKD"); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`** (PERMAFROST pattern — one WASM, a game per token, each clone with own bank/shares); bet token ≠ self |
+| 1 | `Roll` | `target, amount, min_amount` | the game; bet token in; CLAMPED not reverted; **`amount = 0` bets everything sent** — the primary mint-and-roll flow (`[mint] → [Roll(target,0)]`, mint size unknowable at compose time); response data `(roll, win, payout, effective_amount)` 4×u128 LE |
+| 2 | `Deposit` | `amount` | bet token → mint CHKD shares at current price; zero-share deposits revert |
+| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor (0=off) |
+| 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, payable in the token: ≥1000-unit seed becomes the creator's first LP deposit (shares returned); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
+| 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
+| 99/100 | `GetName`/`GetSymbol` | — | "CheekyD House" / "CHKD" — **wallet convention, load-bearing** |
+| 101 | `ViewBank` | — | `(bank, total_shares)` |
+| 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
+| 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx)` |
+| 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank |
+| 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
+
+## Storage Layout
+
+```
+/initialized       u8
+/bet_token         AlkaneId (immutable init param — mainnet 2:490)
+/name, /symbol     bytes (immutable init params — per-instance wallet identity)
+/table/{token_id}  AlkaneId (canonical-table registry; template-only, CreateTable-only writer)
+/min_bet           u128  (immutable init param)
+/bank              u128  (LP bankroll: deposits + donations + losses − wins − withdrawals)
+/total_shares      u128  (CHKD supply)
+/last_win_height   u128  (per-block budget bookkeeping)
+/paid_this_block   u128  (Σ realized net payouts at last_win_height)
+/total_bets, /total_wagered, /total_won   u128  (stats)
+```
+
+## Critical Gotchas
+
+1. **All of arbuzino's gotchas apply** (this repo copies its harness): the 99/100
+   wallet convention, deploy auto-runs opcode 0, `--inputs "block:tx:amount"`,
+   varint decoding in view.sh, `protorunesbyaddress` regtest flakiness.
+2. **Do not pin `rev=` on the git deps.** alkanes-rs internally depends on
+   metashrew by floating git ref; a rev pin here creates a SECOND copy of
+   `metashrew_support` in the graph and trait-mismatch compile errors. Revisions
+   are locked by Cargo.lock (seeded from arbuzino's — keep them in sync).
+3. **Entropy byte order**: raw `Hash::to_byte_array()` bytes (internal LE order),
+   NOT display hex. `cheekyd_math::roll` must stay byte-for-byte equal to ord#4541
+   (`sha256(blockhash ‖ txid)`, first 16 bytes LE u128, mod 65536) — it's pinned by
+   `roll_matches_ord_4541_recipe`.
+4. **Deterministic outcome forcing in tests**: the harness block header is fixed at
+   creation (merkle root not recomputed), so the roll varies ONLY via txid — tests
+   walk the routed-DIESEL amount to flip the predicted outcome
+   (`roll_test::build_roll_forced`). Every forced test doubles as an
+   entropy-equivalence proof between test-side math and the contract.
+5. **Multiple bets in one tx share one roll** (same blockhash+txid). This is fair
+   (all bets are monotone roll-under, no arbitrage) but correlated — the frontend
+   should discourage it. Not contract-enforced.
+6. **A win can revert on the per-block cap** if earlier wins in the same block
+   drained it: the bet refunds in full and can be re-sent next block. This is the
+   miner-stuffing defense working as intended, not a bug.
+7. **mint_diesel in tests aliases its outpoint** (null-input tx → same txid every
+   call): mint at most once per test.
+
+## Security invariants (immutable — do not weaken)
+
+- **Roll is top-level-only**: `context.caller == {0,0}` or revert — the
+  flash/atomic-revert guard. Wrapper alkanes can't filter losses.
+- **One-shot init** (`/initialized`), **bet token ≠ self**, **one table per
+  token** (registry), **no privileged op** (no admin/auth), **rounding
+  favors the bank**, **Kelly + block caps** bound every payout.
+
+## Test Coverage
+
+- **Math (25, `cargo test -p cheekyd-math`)**: ord#4541 recipe pin, payout
+  exactness/EV bounds (property-tested across hypothetical edges), Kelly caps
+  + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
+  1000-consecutive-wins survival, share pricing (virtual offset, round-trip,
+  solvency fuzz, inflation-attack unprofitability), mul_div 256-bit.
+- **Integration (20, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+  donate wiring incl. change + slippage floor + revert refunds (`lp_test`);
+  forced win/lose settlement, `amount=0` bets-everything sentinel,
+  oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust
+  rejections, ViewMaxBet vs math, LP appreciation after losses (`roll_test`);
+  factory clone independence + per-clone identity, re-init + table registry (`factory_test`); contract-wrapped Roll rejected while top-level accepted (`flash_attack_test`); per-opcode fuel ≤ 3.5M floor incl. CreateTable ≈ 19% (`fuel_audit_test`); two same-block wins + full-withdraw→dormant→revive (`scenario_test`).
+
+## Relationship to arbuzino
+
+Shares the change-return contract patterns, the test harness, and the deploy
+conventions — but is a **standalone repo and a standalone contract** with no
+runtime link to arbuzino at all (the once-drafted fee bridge to vault 4:777 was
+removed: only LPs earn). Bet currency differs too: 2:490 on mainnet vs
+Fireball's DIESEL.
