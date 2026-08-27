@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-**CheekyD** is an instant roll-under dice game on Bitcoin via the ALKANES metaprotocol.
+**Cheeky Bricky** is an instant roll-under dice game on Bitcoin via the ALKANES metaprotocol.
 The bet/bank currency is a single alkane fixed at init and immutable after —
 **mainnet: 2:490**; regtest/tests: DIESEL 2:0 (the only harness-mintable token).
 Everything is immutable — the 1% edge is a compile-time constant, there is no
@@ -16,7 +16,7 @@ the roll comes from `sha256(blockhash ‖ txid)` of the block that mines the bet
 bet tx's own output atomically. No rounds, no claims, no NFTs, no pending
 liabilities — ever.
 
-The bankroll is **LP-owned**: deposits mint fungible CHKD shares (units of the game
+The bankroll is **LP-owned**: deposits mint fungible CBRK shares (units of the game
 alkane itself) at the current `bank/total_shares` price; withdrawals burn them
 pro-rata, anytime. The **half-Kelly cap** (max player net profit = 0.5% of bank,
 per bet AND per block aggregate, independent of chosen odds) makes the bank
@@ -34,7 +34,7 @@ miner-withholding analysis).
 
 ```bash
 cargo build                                  # native build (IDE/check)
-cargo test -p cheekyd-math                   # 25 unit tests (pure math, fast)
+cargo test -p cheeky-bricky-math                   # 25 unit tests (pure math, fast)
 ./scripts/build-wasms.sh                     # wasm32 build + vendor into src/tests/wasm/
 cargo test --lib -- --test-threads=1         # integration tests (alkanes harness)
 # --test-threads=1 because tests share global metashrew state
@@ -47,31 +47,31 @@ ALKANES_RS=~/subfrost/alkanes-rs ./scripts/deploy-regtest.sh --build
 ## Repository Layout
 
 ```
-cheekyd/
+cheeky-bricky/
 ├── Cargo.toml                       # workspace + test package (git deps float;
 │                                    #  Cargo.lock is seeded from arbuzino's so both
 │                                    #  projects build identical alkanes revisions —
 │                                    #  do NOT add rev= pins, they split the dep graph)
 ├── alkanes/
-│   ├── cheekyd-game/                # thin declare_alkane! wrapper → cheekyd_game.wasm
-│   ├── cheekyd-game-runtime/        # all logic (trait CheekydBase)
-│   └── cheekyd-attacker/            # TEST-ONLY fixture: wraps a Roll (flash-attack test)
+│   ├── cheeky-bricky-game/                # thin declare_alkane! wrapper → cheeky_bricky_game.wasm
+│   ├── cheeky-bricky-game-runtime/        # all logic (trait CheekyBrickyBase)
+│   └── cheeky-bricky-attacker/            # TEST-ONLY fixture: wraps a Roll (flash-attack test)
 ├── crates/
-│   └── cheekyd-math/                # pure math: roll, payout, Kelly, share pricing
+│   └── cheeky-bricky-math/                # pure math: roll, payout, Kelly, share pricing
 ├── src/tests/                       # integration tests (harness copied from arbuzino)
 │   ├── helpers.rs / foundation.rs / vendor.rs / test_logger.rs
 │   ├── lp_test.rs                   # deposit/withdraw/donate wiring
 │   ├── roll_test.rs                 # the game, with DETERMINISTIC win/lose forcing
 │   ├── factory_test.rs              # per-token clones (PERMAFROST pattern)
-│   ├── flash_attack_test.rs         # Roll rejects contract callers (cheekyd-attacker fixture)
+│   ├── flash_attack_test.rs         # Roll rejects contract callers (cheeky-bricky-attacker fixture)
 │   ├── fuel_audit_test.rs           # every opcode ≤ 3.5M fuel floor (CreateTable is the heavy one)
 │   ├── scenario_test.rs             # same-block budget, full withdraw + revive
-│   └── wasm/                        # vendored cheekyd_game.wasm
+│   └── wasm/                        # vendored cheeky_bricky_game.wasm
 ├── docs/SPEC.md                     # the design document — read this first
 └── scripts/                         # regtest CLI helpers (source scripts/_env.sh)
 ```
 
-## Key Constants (immutable, `crates/cheekyd-math/src/lib.rs`)
+## Key Constants (immutable, `crates/cheeky-bricky-math/src/lib.rs`)
 
 ```rust
 EDGE_BPS  = 100          // 1%, FIXED FOREVER — ALL of it accrues to LPs (no protocol
@@ -89,19 +89,19 @@ the roll still happens); `min_amount` on Roll opts into all-or-nothing.
 
 The Kelly result that makes this work: the growth-optimal cap on player net profit
 is `edge · bank` **regardless of the player's chosen odds** (derived in SPEC.md,
-enforced in `Roll`, proven in `cheekyd-math` tests incl. a 200k-bet no-ruin sim).
+enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-ruin sim).
 
-## Opcodes (cheekyd-game, one contract = game + share token)
+## Opcodes (cheeky-bricky-game, one contract = game + share token)
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `InitCheekyd` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "CheekyD House"/"CHKD"); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`** (PERMAFROST pattern — one WASM, a game per token, each clone with own bank/shares); bet token ≠ self |
+| 0 | `InitCheekyBricky` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "Cheeky Bricky"/"CBRK"); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`** (PERMAFROST pattern — one WASM, a game per token, each clone with own bank/shares); bet token ≠ self |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in; CLAMPED not reverted; **`amount = 0` bets everything sent** — the primary mint-and-roll flow (`[mint] → [Roll(target,0)]`, mint size unknowable at compose time); response data `(roll, win, payout, effective_amount)` 4×u128 LE |
-| 2 | `Deposit` | `amount` | bet token → mint CHKD shares at current price; zero-share deposits revert |
+| 2 | `Deposit` | `amount` | bet token → mint CBRK shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor (0=off) |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, payable in the token: ≥1000-unit seed becomes the creator's first LP deposit (shares returned); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
-| 99/100 | `GetName`/`GetSymbol` | — | "CheekyD House" / "CHKD" — **wallet convention, load-bearing** |
+| 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky" / "CBRK" — **wallet convention, load-bearing** |
 | 101 | `ViewBank` | — | `(bank, total_shares)` |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx)` |
@@ -117,7 +117,7 @@ enforced in `Roll`, proven in `cheekyd-math` tests incl. a 200k-bet no-ruin sim)
 /table/{token_id}  AlkaneId (canonical-table registry; template-only, CreateTable-only writer)
 /min_bet           u128  (immutable init param)
 /bank              u128  (LP bankroll: deposits + donations + losses − wins − withdrawals)
-/total_shares      u128  (CHKD supply)
+/total_shares      u128  (CBRK supply)
 /last_win_height   u128  (per-block budget bookkeeping)
 /paid_this_block   u128  (Σ realized net payouts at last_win_height)
 /total_bets, /total_wagered, /total_won   u128  (stats)
@@ -133,7 +133,7 @@ enforced in `Roll`, proven in `cheekyd-math` tests incl. a 200k-bet no-ruin sim)
    `metashrew_support` in the graph and trait-mismatch compile errors. Revisions
    are locked by Cargo.lock (seeded from arbuzino's — keep them in sync).
 3. **Entropy byte order**: raw `Hash::to_byte_array()` bytes (internal LE order),
-   NOT display hex. `cheekyd_math::roll` must stay byte-for-byte equal to ord#4541
+   NOT display hex. `cheeky_bricky_math::roll` must stay byte-for-byte equal to ord#4541
    (`sha256(blockhash ‖ txid)`, first 16 bytes LE u128, mod 65536) — it's pinned by
    `roll_matches_ord_4541_recipe`.
 4. **Deterministic outcome forcing in tests**: the harness block header is fixed at
@@ -160,7 +160,7 @@ enforced in `Roll`, proven in `cheekyd-math` tests incl. a 200k-bet no-ruin sim)
 
 ## Test Coverage
 
-- **Math (25, `cargo test -p cheekyd-math`)**: ord#4541 recipe pin, payout
+- **Math (25, `cargo test -p cheeky-bricky-math`)**: ord#4541 recipe pin, payout
   exactness/EV bounds (property-tested across hypothetical edges), Kelly caps
   + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
   1000-consecutive-wins survival, share pricing (virtual offset, round-trip,

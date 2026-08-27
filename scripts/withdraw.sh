@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LP out: burn SHARES (CHKD, units of 4:205) for their pro-rata slice of the
+# LP out: burn SHARES (CBRK, units of 4:205) for their pro-rata slice of the
 # bank. MIN_PAYOUT is a slippage floor (0 = off).
 #
 # Usage: ./scripts/withdraw.sh SHARES [MIN_PAYOUT]

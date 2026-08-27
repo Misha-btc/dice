@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# CheekyD end-to-end smoke test on regtest. The critical LP+player loop:
+# Cheeky Bricky end-to-end smoke test on regtest. The critical LP+player loop:
 #   1. Deploy the game (init) + mine DIESEL
-#   2. Become the house: deposit → mint CHKD shares (bank funded)
+#   2. Become the house: deposit → mint CBRK shares (bank funded)
 #   3. Play: several rolls (wins pay out, losses feed the bank) via traces
 #   4. Withdraw: burn shares → pro-rata DIESEL back
 #   5. Views throughout (bank / stats / config)
@@ -27,18 +27,18 @@ height() {
 ok() { echo "  ✓ $1"; }
 fail() { echo "  ✗ $1"; exit 1; }
 
-echo "═══ CheekyD E2E Smoke Test ═══"
+echo "═══ Cheeky Bricky E2E Smoke Test ═══"
 echo ""
 
 echo "[1/5] Deploy + mine DIESEL"
-bash "$SCRIPT_DIR/deploy-regtest.sh" --build > /tmp/cheekyd-e2e-deploy.log 2>&1 \
-    && ok "deployed (see /tmp/cheekyd-e2e-deploy.log)" || fail "deploy"
+bash "$SCRIPT_DIR/deploy-regtest.sh" --build > /tmp/cheeky-bricky-e2e-deploy.log 2>&1 \
+    && ok "deployed (see /tmp/cheeky-bricky-e2e-deploy.log)" || fail "deploy"
 # a couple more free mints so we have DIESEL to stake and bet
 echo y | $CLI alkanes execute "[2,0,77]:v0:v0" --from p2tr:0 --change p2tr:0 --alkanes-change p2tr:0 --mine --fee-rate 1 > /dev/null 2>&1 || true
 echo ""
 
 echo "[2/5] Become the house: deposit 100_000_000 DIESEL"
-bash "$SCRIPT_DIR/deposit.sh" 100000000 > /tmp/cheekyd-e2e-dep.log 2>&1 \
+bash "$SCRIPT_DIR/deposit.sh" 100000000 > /tmp/cheeky-bricky-e2e-dep.log 2>&1 \
     && ok "deposited" || fail "deposit"
 bash "$SCRIPT_DIR/view.sh" bank
 echo ""
@@ -46,9 +46,9 @@ echo ""
 echo "[3/5] Play: 3 rolls at 50% (coin flip)"
 for i in 1 2 3; do
     echo "  roll #$i ..."
-    bash "$SCRIPT_DIR/roll.sh" 32768 1000000 > "/tmp/cheekyd-e2e-roll$i.log" 2>&1 || true
-    grep -qi "completed successfully" "/tmp/cheekyd-e2e-roll$i.log" && ok "roll #$i landed" \
-        || echo "    (see /tmp/cheekyd-e2e-roll$i.log — may have reverted on caps)"
+    bash "$SCRIPT_DIR/roll.sh" 32768 1000000 > "/tmp/cheeky-bricky-e2e-roll$i.log" 2>&1 || true
+    grep -qi "completed successfully" "/tmp/cheeky-bricky-e2e-roll$i.log" && ok "roll #$i landed" \
+        || echo "    (see /tmp/cheeky-bricky-e2e-roll$i.log — may have reverted on caps)"
 done
 bash "$SCRIPT_DIR/view.sh" stats
 bash "$SCRIPT_DIR/view.sh" bank
@@ -59,7 +59,7 @@ echo "[4/5] Withdraw half your shares"
 SHARES=$(bash "$SCRIPT_DIR/view.sh" bank | awk '/total_shares/ {print $2}')
 HALF=$(python3 -c "print(int(${SHARES:-0})//2)")
 if [ "${HALF:-0}" -gt 0 ]; then
-    bash "$SCRIPT_DIR/withdraw.sh" "$HALF" 0 > /tmp/cheekyd-e2e-wd.log 2>&1 \
+    bash "$SCRIPT_DIR/withdraw.sh" "$HALF" 0 > /tmp/cheeky-bricky-e2e-wd.log 2>&1 \
         && ok "withdrew $HALF shares" || fail "withdraw"
 else
     echo "  (no shares to withdraw — deposit step may have failed)"
@@ -71,4 +71,4 @@ echo "[5/5] Final config + stats"
 bash "$SCRIPT_DIR/view.sh" config
 bash "$SCRIPT_DIR/view.sh" stats
 echo ""
-echo "═══ E2E complete (inspect the /tmp/cheekyd-e2e-*.log traces) ═══"
+echo "═══ E2E complete (inspect the /tmp/cheeky-bricky-e2e-*.log traces) ═══"

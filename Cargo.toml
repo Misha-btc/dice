@@ -1,14 +1,14 @@
 [workspace]
 members = [
-    "alkanes/cheekyd-game",
-    "alkanes/cheekyd-game-runtime",
-    "alkanes/cheekyd-attacker",
-    "crates/cheekyd-math",
+    "alkanes/cheeky-bricky-game",
+    "alkanes/cheeky-bricky-game-runtime",
+    "alkanes/cheeky-bricky-attacker",
+    "crates/cheeky-bricky-math",
 ]
 resolver = "2"
 
 [package]
-name = "cheekyd-tests"
+name = "cheeky-bricky-tests"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -32,7 +32,7 @@ protorune-support = { git = "https://github.com/kungfuflex/alkanes-rs" }
 anyhow = "1.0.75"
 bitcoin = { version = "0.32", features = ["rand"] }
 
-cheekyd-math = { path = "crates/cheekyd-math" }
+cheeky-bricky-math = { path = "crates/cheeky-bricky-math" }
 
 [dev-dependencies]
 alkanes = { workspace = true }
@@ -44,5 +44,5 @@ protorune = { workspace = true }
 protorune-support = { workspace = true }
 anyhow = { workspace = true }
 bitcoin = { workspace = true }
-cheekyd-math = { workspace = true }
+cheeky-bricky-math = { workspace = true }
 ordinals = { git = "https://github.com/kungfuflex/alkanes-rs" }

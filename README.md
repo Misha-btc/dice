@@ -1,4 +1,4 @@
-# CheekyD
+# Cheeky Bricky
 
 Instant roll-under dice on Bitcoin via the ALKANES metaprotocol. One transaction
 = one bet = one resolution: the outcome is decided by `sha256(blockhash || txid)`

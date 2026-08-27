@@ -4,14 +4,14 @@
 //! the table.
 
 use crate::test_log;
-use crate::tests::foundation::{deploy_cheekyd, game_id, mint_diesel, MIN_BET};
+use crate::tests::foundation::{deploy_cheeky_bricky, game_id, mint_diesel, MIN_BET};
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, get_sheet_by_outpoint, index_block,
     Block, Cellpack, OutPoint, DIESEL_ID,
 };
 use anyhow::Result;
 use bitcoin::hashes::Hash;
-use cheekyd_math::{block_budget, is_win, max_bet, payout_total, shares_for_deposit, withdraw_payout, EDGE_BPS};
+use cheeky_bricky_math::{block_budget, is_win, max_bet, payout_total, shares_for_deposit, withdraw_payout, EDGE_BPS};
 
 const OP_ROLL: u128 = 1;
 const OP_DEPOSIT: u128 = 2;
@@ -52,7 +52,7 @@ fn build_roll(height: u32, input: OutPoint, route: u128, target: u128, amount: u
     );
     let bh = block.header.block_hash().as_raw_hash().to_byte_array();
     let txid = block.txdata[1].compute_txid().as_raw_hash().to_byte_array();
-    (block.clone(), cheekyd_math::roll(&bh, &txid))
+    (block.clone(), cheeky_bricky_math::roll(&bh, &txid))
 }
 
 /// Walk route candidates until the predicted outcome matches `want_win`.
@@ -70,7 +70,7 @@ fn forced_win(height: u32, input: OutPoint, route_base: u128, target: u128, amou
 
 fn setup_bank(bank: u128) -> Result<(OutPoint, u128, u32)> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -132,7 +132,7 @@ fn test_two_wins_one_block_share_budget() -> Result<()> {
 #[test]
 fn test_full_withdraw_then_revive() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;

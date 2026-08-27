@@ -1,6 +1,6 @@
-//! CheekyD — instant roll-under dice on ALKANES (fully immutable: the 1%
+//! Cheeky Bricky — instant roll-under dice on ALKANES (fully immutable: the 1%
 //! edge is a compile-time constant, there is no privileged capability of
-//! any kind). Thin declare_alkane! wrapper over `CheekydBase`. The contract
+//! any kind). Thin declare_alkane! wrapper over `CheekyBrickyBase`. The contract
 //! is simultaneously the game singleton and the LP share token (units of
 //! itself). The whole edge accrues to the LP bank — no protocol fee.
 
@@ -8,20 +8,20 @@ use alkanes_runtime::{declare_alkane, message::MessageDispatch, runtime::AlkaneR
 use anyhow::Result;
 use metashrew_support::compat::to_arraybuffer_layout;
 
-use cheekyd_game_runtime::CheekydBase;
+use cheeky_bricky_game_runtime::CheekyBrickyBase;
 
 #[derive(MessageDispatch)]
-pub enum CheekydMessage {
+pub enum CheekyBrickyMessage {
     /// One-time init: `min_bet` (≥ 1000), the bet/bank token id (mainnet:
     /// 2:490), and the share token's name/symbol (u128-packed LE strings,
-    /// `0` = "CheekyD House"/"CHKD" defaults) — immutable afterwards, like
+    /// `0` = "Cheeky Bricky"/"CBRK" defaults) — immutable afterwards, like
     /// everything else (the 1% edge is compiled in). **Factory-ready**:
     /// clone the deployed template for ANY token via
     /// `[6, TEMPLATE_TX, 0, min_bet, tb, tt, name, symbol]` — each clone is
     /// an independent game (own bank/shares). Direct deploy:
     /// `[3, TX, 0, ...]` (gotcha: deploy runs opcode 0).
     #[opcode(0)]
-    InitCheekyd {
+    InitCheekyBricky {
         min_bet: u128,
         token_block: u128,
         token_tx: u128,
@@ -122,13 +122,13 @@ pub enum CheekydMessage {
 }
 
 #[derive(Default)]
-pub struct Cheekyd();
+pub struct CheekyBricky();
 
-impl CheekydBase for Cheekyd {}
-impl AlkaneResponder for Cheekyd {}
+impl CheekyBrickyBase for CheekyBricky {}
+impl AlkaneResponder for CheekyBricky {}
 
 declare_alkane! {
-    impl AlkaneResponder for Cheekyd {
-        type Message = CheekydMessage;
+    impl AlkaneResponder for CheekyBricky {
+        type Message = CheekyBrickyMessage;
     }
 }

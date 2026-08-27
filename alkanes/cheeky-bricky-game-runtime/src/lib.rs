@@ -1,4 +1,4 @@
-//! CheekyD runtime — instant roll-under dice vs an LP-owned bankroll.
+//! Cheeky Bricky runtime — instant roll-under dice vs an LP-owned bankroll.
 //!
 //! One transaction = one bet = one resolution: the roll is derived from
 //! `sha256(blockhash ‖ txid)` of the block that mines the bet (ord#4541's
@@ -39,7 +39,7 @@ use bitcoin::hashes::Hash;
 use metashrew_support::index_pointer::KeyValuePointer;
 use std::sync::Arc;
 
-use cheekyd_math::{
+use cheeky_bricky_math::{
     block_budget, is_win, max_amount_for_exposure, max_bet, max_net_profit, net_exposure,
     payout_total, roll as roll_entropy, shares_for_deposit, t_max, validate_target,
     withdraw_payout, EDGE_BPS, T_MIN,
@@ -138,12 +138,12 @@ fn pack_str(s: &str) -> u128 {
 
 // ---------- The trait ----------
 
-pub trait CheekydBase: AlkaneResponder {
+pub trait CheekyBrickyBase: AlkaneResponder {
     // ---- Init ----
 
     /// One-time. `min_bet` (≥ 1000), the bet/bank token id, and the share
     /// token's name/symbol (one u128 each, standard LE packing; `0` = the
-    /// "CheekyD House"/"CHKD" defaults) — immutable afterwards, like
+    /// "Cheeky Bricky"/"CBRK" defaults) — immutable afterwards, like
     /// everything else: the edge is a compile-time 1% and there is no
     /// privileged capability of any kind.
     ///
@@ -153,7 +153,7 @@ pub trait CheekydBase: AlkaneResponder {
     /// symbol]` to spin up an independent game (own bank, own shares) for
     /// any token without re-deploying bytecode. Direct deploy runs the same
     /// init via `[3, TX, 0, ...]` (gotcha: deploy auto-runs opcode 0).
-    fn init_cheekyd(
+    fn init_cheeky_bricky(
         &self,
         min_bet: u128,
         token_block: u128,
@@ -188,12 +188,12 @@ pub trait CheekydBase: AlkaneResponder {
         let name_s = trim(name);
         let symbol_s = trim(symbol);
         ptr("/name").set(Arc::new(if name_s.is_empty() {
-            b"CheekyD House".to_vec()
+            b"Cheeky Bricky".to_vec()
         } else {
             name_s.into_bytes()
         }));
         ptr("/symbol").set(Arc::new(if symbol_s.is_empty() {
-            b"CHKD".to_vec()
+            b"CBRK".to_vec()
         } else {
             symbol_s.into_bytes()
         }));
@@ -283,12 +283,12 @@ pub trait CheekydBase: AlkaneResponder {
         )
         .unwrap_or_default();
         let table_name = if tname.is_empty() {
-            0 // clone init falls back to "CheekyD House"
+            0 // clone init falls back to "Cheeky Bricky"
         } else {
             pack_str(&format!("{} House", tname))
         };
         let table_sym = if tsym.is_empty() {
-            0 // fallback "CHKD"
+            0 // fallback "CBRK"
         } else {
             pack_str(&format!("h{}", tsym))
         };
@@ -517,7 +517,7 @@ pub trait CheekydBase: AlkaneResponder {
 
     /// Add exactly `amount` of the bet token to the bank and mint share
     /// units of this contract at the current share price
-    /// (`amount · (S + 10^6) / (B + 1)`, virtual-offset — see cheekyd-math).
+    /// (`amount · (S + 10^6) / (B + 1)`, virtual-offset — see cheeky-bricky-math).
     /// Overpay above `amount` returned as change; stray other alkanes handed
     /// back. Reverts if the deposit would mint zero shares.
     fn deposit(&self, amount: u128) -> Result<CallResponse> {
@@ -622,7 +622,7 @@ pub trait CheekydBase: AlkaneResponder {
         }
 
         write_u128(ptr("/total_shares"), total_shares - shares);
-        // payout ≤ bank proven in cheekyd-math (withdraw_never_exceeds_bank).
+        // payout ≤ bank proven in cheeky-bricky-math (withdraw_never_exceeds_bank).
         write_u128(ptr("/bank"), bank.saturating_sub(payout));
 
         let mut response = CallResponse::default();

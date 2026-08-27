@@ -608,7 +608,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
-name = "cheekyd-attacker"
+name = "cheeky-bricky-attacker"
 version = "0.1.0"
 dependencies = [
  "alkanes-runtime",
@@ -618,30 +618,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "cheekyd-game"
+name = "cheeky-bricky-game"
 version = "0.1.0"
 dependencies = [
  "alkanes-runtime",
  "alkanes-support",
  "anyhow",
- "cheekyd-game-runtime",
+ "cheeky-bricky-game-runtime",
  "metashrew-support",
 ]
 
 [[package]]
-name = "cheekyd-game-runtime"
+name = "cheeky-bricky-game-runtime"
 version = "0.1.0"
 dependencies = [
  "alkanes-runtime",
  "alkanes-support",
  "anyhow",
  "bitcoin 0.32.9",
- "cheekyd-math",
+ "cheeky-bricky-math",
  "metashrew-support",
 ]
 
 [[package]]
-name = "cheekyd-math"
+name = "cheeky-bricky-math"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -649,7 +649,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cheekyd-tests"
+name = "cheeky-bricky-tests"
 version = "0.1.0"
 dependencies = [
  "alkanes",
@@ -657,7 +657,7 @@ dependencies = [
  "alkanes-support",
  "anyhow",
  "bitcoin 0.32.9",
- "cheekyd-math",
+ "cheeky-bricky-math",
  "metashrew-core",
  "metashrew-support",
  "ordinals 1.2.3",

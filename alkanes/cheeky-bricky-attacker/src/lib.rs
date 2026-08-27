@@ -1,4 +1,4 @@
-//! TEST-ONLY fixture — a minimal alkane that wraps a call to CheekyD's Roll.
+//! TEST-ONLY fixture — a minimal alkane that wraps a call to Cheeky Bricky's Roll.
 //!
 //! Its whole purpose is to reach `Roll` from a CONTRACT context (so the
 //! game sees a non-zero `context.caller`) and prove the flash-attack guard

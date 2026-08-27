@@ -1,13 +1,13 @@
-# CheekyD — instant dice on ALKANES
+# Cheeky Bricky — instant dice on ALKANES
 
 Status: **implemented** (contract + math + integration tests; regtest e2e
-pending). Name: **CheekyD** (originally "D = DIESEL"; since the bet currency
-moved to 2:490 the D is whatever you read into it). Domains cheekyd.com /
+pending). Name: **Cheeky Bricky** (originally "D = DIESEL"; since the bet currency
+moved to 2:490 the D is whatever you read into it). Domains cheekybricky.com /
 .xyz / .io were free as of 2026-08-25.
 
-Code map: `crates/cheekyd-math` (pure math + the Kelly/no-ruin proofs),
-`alkanes/cheekyd-game-runtime` (all logic, trait `CheekydBase`),
-`alkanes/cheekyd-game` (thin `declare_alkane!` wrapper), `src/tests/`
+Code map: `crates/cheeky-bricky-math` (pure math + the Kelly/no-ruin proofs),
+`alkanes/cheeky-bricky-game-runtime` (all logic, trait `CheekyBrickyBase`),
+`alkanes/cheeky-bricky-game` (thin `declare_alkane!` wrapper), `src/tests/`
 (integration on the alkanes harness — deterministic win/lose forcing by
 walking txid candidates).
 
@@ -162,7 +162,7 @@ player's wallet. Both modes coexist in the UI as a toggle.
 There is **no fee of any kind**: the payout multiplier embeds the full edge
 and every losing stake lands in the LP bank whole. No `/fee_accumulator`,
 no vault bridge, no admin skim. The pitch is clean: **the house is 100%
-LP-owned** — the only way to earn from CheekyD is to stake the bank.
+LP-owned** — the only way to earn from Cheeky Bricky is to stake the bank.
 
 ## Factory (the PERMAFROST pattern)
 
@@ -224,13 +224,13 @@ entire game, forever.
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `InitCheekyd` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); self-registers in the table registry |
+| 0 | `InitCheekyBricky` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); self-registers in the table registry |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless, payable in the token (≥1000-unit seed → creator's LP shares); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in `--inputs`; clamped not reverted; `amount = 0` bets everything sent (mint-and-roll); response data `(roll, win, payout, effective_amount)` |
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor |
 | 5 | `Donate` | `amount` | grow the bank, no shares |
-| 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "CheekyD House" / "CHKD" |
+| 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Cheeky Bricky" / "CBRK" |
 | 101 | `ViewBank` | — | `(bank, total_shares)` |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx)` |
@@ -264,7 +264,7 @@ cannot conditionally revert on the outcome.
 Legit flows are unaffected: **mint-and-roll** chains two SEPARATE top-level
 protostones (mint, then Roll — each caller `{0,0}`), never a contract call;
 `CreateTable` calls `Deposit` (not Roll) on the clone. Positive path proven by every roll test (all top-level); the negative
-path is proven by `flash_attack_test` — a test-only `cheekyd-attacker`
+path is proven by `flash_attack_test` — a test-only `cheeky-bricky-attacker`
 alkane forwards a Roll from its own contract context and the call reverts
 (no bet recorded, bank untouched, DIESEL refunded).
 
@@ -276,7 +276,7 @@ alkane forwards a Roll from its own contract context and the call reverts
 2. **First-depositor mitigation**: OZ-style virtual offset
    (`VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1`) + revert on zero-share
    deposits. Attack is a guaranteed ~50% loss for the attacker (tested).
-3. **Share token branding**: `GetName` = "CheekyD House", `GetSymbol` = "CHKD".
+3. **Share token branding**: `GetName` = "Cheeky Bricky", `GetSymbol` = "CBRK".
 4. **Init params** (immutable): `min_bet` (≥ 1000, a rounding/dust floor) and
    the bet/bank token id — **mainnet 2:490**; the id is a parameter (not a
    hardcode) so the test harness can run on mintable DIESEL.
@@ -321,7 +321,7 @@ bugs; all are isolated to the offending table):
 
 2. **A table can be created for another table's SHARES.** Share tokens are
    ordinary alkanes that implement 99/100, so `CreateTable{hBRICK}` succeeds —
-   a game where you bet CheekyD shares. Fully isolated (own bank/shares), just
+   a game where you bet Cheeky Bricky shares. Fully isolated (own bank/shares), just
    exotic. Not blocked because detecting "is this one of my clones' shares"
    generically isn't possible and the nesting is harmless.
 

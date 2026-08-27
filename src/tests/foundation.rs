@@ -1,4 +1,4 @@
-//! Foundation helpers: deploy the CheekyD game and provide the bet token.
+//! Foundation helpers: deploy the Cheeky Bricky game and provide the bet token.
 //! The harness free-mints DIESEL (2:0), so tests init the game with DIESEL
 //! as the bet token; mainnet passes its own token id (2:490) at deploy —
 //! the id is an immutable init parameter precisely so the harness can test
@@ -8,7 +8,7 @@ use crate::tests::helpers::{
     create_deployment_block, get_sheet_by_outpoint, index_block,
     init_with_multiple_cellpacks_with_tx, AlkaneId, Cellpack, OutPoint, Result, DIESEL_ID,
 };
-use crate::tests::vendor::get_cheekyd_game_wasm_bytes;
+use crate::tests::vendor::get_cheeky_bricky_game_wasm_bytes;
 use crate::test_log;
 
 /// Tx slot for the game singleton. Result lives at {4, GAME_TX}.
@@ -44,7 +44,7 @@ pub fn mint_diesel(block_height: u32) -> Result<(u128, OutPoint)> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CheekydDeployment {
+pub struct CheekyBrickyDeployment {
     pub game_id: AlkaneId,
     pub last_height: u32,
 }
@@ -52,23 +52,23 @@ pub struct CheekydDeployment {
 /// Deploy + init the game in one cellpack (gotcha: deploy via block 3
 /// IMMEDIATELY runs opcode 0, so the cellpack must carry the real init
 /// args). Bet token = DIESEL (2:0), the only currency the harness can mint.
-pub fn deploy_cheekyd(min_bet: u128) -> Result<CheekydDeployment> {
+pub fn deploy_cheeky_bricky(min_bet: u128) -> Result<CheekyBrickyDeployment> {
     let mut height = 880_000u32;
 
     let game_deploy_block = create_deployment_block(
         height,
-        get_cheekyd_game_wasm_bytes(),
+        get_cheeky_bricky_game_wasm_bytes(),
         Cellpack {
             target: AlkaneId { block: 3, tx: GAME_TX },
-            // name/symbol 0 = the "CheekyD House"/"CHKD" defaults
+            // name/symbol 0 = the "Cheeky Bricky"/"CBRK" defaults
             inputs: vec![0, min_bet, DIESEL_ID.block, DIESEL_ID.tx, 0, 0],
         },
     );
     index_block(&game_deploy_block, height)?;
     height += 1;
 
-    test_log!("[FOUNDATION] cheekyd deployed: {:?}", game_id());
-    Ok(CheekydDeployment {
+    test_log!("[FOUNDATION] cheeky-bricky deployed: {:?}", game_id());
+    Ok(CheekyBrickyDeployment {
         game_id: game_id(),
         last_height: height,
     })

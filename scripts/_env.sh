@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared environment for CheekyD regtest scripts. Source, don't execute.
+# Shared environment for Cheeky Bricky regtest scripts. Source, don't execute.
 # Mirrors arbuzino's per-script boilerplate (alkanes-cli resolution etc.).
 
 GAME_BLOCK=4
@@ -23,7 +23,7 @@ fi
 
 NETWORK="${NETWORK:-regtest}"
 RPC_URL="${RPC_URL:-http://127.0.0.1:18888}"
-WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheekyd.json}"
+WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheeky-bricky.json}"
 DEPLOY_PASSWORD="${DEPLOY_PASSWORD:-testtest}"
 
 CLI="$ALKANES_CLI -p $NETWORK --jsonrpc-url $RPC_URL --wallet-file $WALLET_FILE --passphrase $DEPLOY_PASSWORD"

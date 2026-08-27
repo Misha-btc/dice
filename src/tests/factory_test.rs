@@ -5,14 +5,14 @@
 
 use crate::test_log;
 use crate::tests::foundation::{
-    deploy_cheekyd, game_id, mint_diesel, GAME_TX, MIN_BET,
+    deploy_cheeky_bricky, game_id, mint_diesel, GAME_TX, MIN_BET,
 };
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, create_operation_block, index_block,
     AlkaneId, Cellpack, DIESEL_ID,
 };
 use anyhow::Result;
-use cheekyd_math::shares_for_deposit;
+use cheeky_bricky_math::shares_for_deposit;
 
 const OP_DEPOSIT: u128 = 2;
 const VIEW_BANK: u128 = 101;
@@ -64,7 +64,7 @@ fn table_of(host: &AlkaneId, token: &AlkaneId) -> AlkaneId {
 #[test]
 fn test_table_registry_one_table_per_token_forever() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let zero = AlkaneId { block: 0, tx: 0 };
 
@@ -187,7 +187,7 @@ fn test_reinit_is_rejected() -> Result<()> {
     // The /initialized marker makes init one-shot: a second init call with
     // different params must revert and change nothing.
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let h = deploy.last_height;
 
     let attack = create_operation_block(
@@ -206,14 +206,14 @@ fn test_reinit_is_rejected() -> Result<()> {
     assert_eq!(first_u128(&cfg), MIN_BET, "min_bet unchanged");
     assert_eq!(first_u128(&cfg[64..]), DIESEL_ID.block, "bet token unchanged");
     assert_eq!(first_u128(&cfg[80..]), DIESEL_ID.tx, "bet token unchanged");
-    assert_eq!(view_bytes(&game_id(), vec![99]), b"CheekyD House".to_vec(), "name unchanged");
+    assert_eq!(view_bytes(&game_id(), vec![99]), b"Cheeky Bricky".to_vec(), "name unchanged");
     Ok(())
 }
 
 #[test]
 fn test_factory_clone_spins_an_independent_game() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
 
     // Clone the template via the factory (block 6) with its own identity.
@@ -245,8 +245,8 @@ fn test_factory_clone_spins_an_independent_game() -> Result<()> {
     assert_eq!(view_bytes(&clone, vec![100]), b"FRT".to_vec(), "clone symbol");
 
     // The template keeps its default identity — clones are tellable apart.
-    assert_eq!(view_bytes(&game_id(), vec![99]), b"CheekyD House".to_vec());
-    assert_eq!(view_bytes(&game_id(), vec![100]), b"CHKD".to_vec());
+    assert_eq!(view_bytes(&game_id(), vec![99]), b"Cheeky Bricky".to_vec());
+    assert_eq!(view_bytes(&game_id(), vec![100]), b"CBRK".to_vec());
 
     // Deposit into the CLONE only: its bank grows, the template's stays 0.
     let (minted, diesel_op) = mint_diesel(h)?;

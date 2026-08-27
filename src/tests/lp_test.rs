@@ -1,16 +1,16 @@
 //! LP-side integration: deposit mints shares at the virtual-offset price,
 //! withdraw burns them for a pro-rata slice of the bank, donate grows the
-//! bank without minting. Economics are proven in `cheekyd-math`; these prove
+//! bank without minting. Economics are proven in `cheeky-bricky-math`; these prove
 //! the on-chain wiring (mint/burn of self-units, change returns, refunds).
 
 use crate::test_log;
-use crate::tests::foundation::{deploy_cheekyd, game_id, mint_diesel, MIN_BET};
+use crate::tests::foundation::{deploy_cheeky_bricky, game_id, mint_diesel, MIN_BET};
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, get_sheet_by_outpoint, index_block,
     AlkaneId, Cellpack, OutPoint, DIESEL_ID,
 };
 use anyhow::Result;
-use cheekyd_math::{shares_for_deposit, withdraw_payout};
+use cheeky_bricky_math::{shares_for_deposit, withdraw_payout};
 
 const OP_DEPOSIT: u128 = 2;
 const OP_WITHDRAW: u128 = 3;
@@ -67,7 +67,7 @@ fn run_op(
 #[test]
 fn test_deposit_mints_shares_and_returns_change() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -89,7 +89,7 @@ fn test_deposit_mints_shares_and_returns_change() -> Result<()> {
 #[test]
 fn test_withdraw_burns_shares_and_pays_pro_rata() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -123,7 +123,7 @@ fn test_withdraw_burns_shares_and_pays_pro_rata() -> Result<()> {
 #[test]
 fn test_withdraw_slippage_floor_reverts() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -148,7 +148,7 @@ fn test_withdraw_slippage_floor_reverts() -> Result<()> {
 #[test]
 fn test_donate_grows_bank_without_shares() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -167,7 +167,7 @@ fn test_donate_grows_bank_without_shares() -> Result<()> {
 #[test]
 fn test_deposit_underpaid_reverts_and_refunds() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;

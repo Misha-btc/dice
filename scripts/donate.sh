@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Gift AMOUNT of the bet token to the bank without minting shares (seeding/marketing —
-# every outstanding CHKD share appreciates).
+# every outstanding CBRK share appreciates).
 #
 # Usage: ./scripts/donate.sh AMOUNT
 

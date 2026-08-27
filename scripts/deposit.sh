@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LP in: deposit AMOUNT of the bet token into the bank, minting CHKD shares at the
+# LP in: deposit AMOUNT of the bet token into the bank, minting CBRK shares at the
 # current share price.
 #
 # Usage: ./scripts/deposit.sh AMOUNT

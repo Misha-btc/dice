@@ -1,10 +1,10 @@
 [package]
-name = "cheekyd-attacker"
+name = "cheeky-bricky-attacker"
 version = "0.1.0"
 edition = "2021"
 
 # TEST-ONLY fixture: a minimal alkane that calls another contract's Roll from
-# its OWN contract context, to prove CheekyD's flash-attack guard rejects
+# its OWN contract context, to prove Cheeky Bricky's flash-attack guard rejects
 # contract-wrapped rolls. NEVER deployed to mainnet.
 
 [lib]

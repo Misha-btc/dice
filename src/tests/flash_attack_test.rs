@@ -3,7 +3,7 @@
 //! block's roll and atomic-revert losses, turning the −edge game +EV and
 //! draining the bank.
 //!
-//! Proven with `cheekyd-attacker`, a test-only alkane whose one job is to
+//! Proven with `cheeky-bricky-attacker`, a test-only alkane whose one job is to
 //! forward a Roll to the game from ITS OWN contract context:
 //!   * SANITY — the identical Roll sent TOP-LEVEL (caller {0,0}) is accepted.
 //!   * THE GUARD — the attacker's wrapped Roll REVERTS: no bet recorded, the
@@ -11,7 +11,7 @@
 //!     caller, so the revert is the guard firing.
 
 use crate::test_log;
-use crate::tests::foundation::{deploy_cheekyd, game_id, mint_diesel, MIN_BET};
+use crate::tests::foundation::{deploy_cheeky_bricky, game_id, mint_diesel, MIN_BET};
 use crate::tests::helpers::{
     clear_test_environment, create_deployment_block, create_op_block_with_token_input,
     get_sheet_by_outpoint, index_block, AlkaneId, Block, Cellpack, OutPoint, DIESEL_ID,
@@ -46,7 +46,7 @@ fn diesel_at(o: &OutPoint) -> u128 {
 #[test]
 fn test_roll_rejects_contract_caller() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheekyd(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky(MIN_BET)?;
     let mut h = deploy.last_height;
     let g = game_id();
 

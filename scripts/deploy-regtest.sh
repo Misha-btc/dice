@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# CheekyD — Regtest Deployment
+# Cheeky Bricky — Regtest Deployment
 #
-# Deploys cheekyd-game as a single immutable direct contract at 4:205 (0xCD).
+# Deploys cheeky-bricky-game as a single immutable direct contract at 4:205 (0xCD).
 # Init (opcode 0, min_bet) runs at deploy time via the cellpack — the
 # standard parameterized-init pattern for immutable alkanes.
 #
@@ -54,7 +54,7 @@ check_success() {
 }
 
 echo "═══════════════════════════════════════"
-echo "  CheekyD — Regtest Deployment"
+echo "  Cheeky Bricky — Regtest Deployment"
 echo "  Network: $NETWORK / RPC: $RPC_URL"
 echo "  min_bet: $MIN_BET"
 echo "═══════════════════════════════════════"
@@ -71,10 +71,10 @@ if [ "$NETWORK" = "regtest" ]; then
     echo ""
 fi
 
-echo "Deploying cheekyd-game (with init, bet token $BET_TOKEN_BLOCK:$BET_TOKEN_TX)..."
+echo "Deploying cheeky-bricky-game (with init, bet token $BET_TOKEN_BLOCK:$BET_TOKEN_TX)..."
 # Last two args: share-token name/symbol (u128-packed; 0,0 = defaults).
-check_success "cheekyd-game (4:$GAME_TX) + init" \
-    "$(run "[3,$GAME_TX,0,$MIN_BET,$BET_TOKEN_BLOCK,$BET_TOKEN_TX,0,0]:v0:v0" "" "$WASM_DIR/cheekyd_game.wasm")"
+check_success "cheeky-bricky-game (4:$GAME_TX) + init" \
+    "$(run "[3,$GAME_TX,0,$MIN_BET,$BET_TOKEN_BLOCK,$BET_TOKEN_TX,0,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_game.wasm")"
 echo ""
 
 if [ "$NETWORK" = "regtest" ]; then
@@ -85,19 +85,19 @@ fi
 
 echo ""
 echo "═══════════════════════════════════════"
-echo "  CheekyD Deployment Complete!"
+echo "  Cheeky Bricky Deployment Complete!"
 echo ""
-echo "  cheekyd-game (singleton + share token): 4:$GAME_TX"
+echo "  cheeky-bricky-game (singleton + share token): 4:$GAME_TX"
 echo "  bet/bank token (immutable):             $BET_TOKEN_BLOCK:$BET_TOKEN_TX"
 echo ""
-echo "  Game constants (from cheekyd-math):"
+echo "  Game constants (from cheeky-bricky-math):"
 echo "    EDGE:   1% — fixed forever, ALL of it to LPs (no protocol fee, no admin)"
 echo "    KELLY:  0.5% of bank max net win per bet"
 echo "    BLOCK:  20% of bank max net payouts per block (miner defense)"
 echo "    TARGET: 656..64238  (1%..98% win chance)"
 echo ""
 echo "  Next steps:"
-echo "    ./scripts/deposit.sh 100000000        # seed the bank (mint CHKD shares)"
+echo "    ./scripts/deposit.sh 100000000        # seed the bank (mint CBRK shares)"
 echo "    ./scripts/roll.sh 32768 1000000       # bet 0.01 DIESEL on a coin flip"
 echo "    ./scripts/view.sh bank                # bank / shares / fee"
 echo "═══════════════════════════════════════"

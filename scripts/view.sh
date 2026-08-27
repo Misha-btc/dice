@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Query CheekyD state via direct `metashrew_view` JSON-RPC (no wallet
+# Query Cheeky Bricky state via direct `metashrew_view` JSON-RPC (no wallet
 # provider — bypasses regtest protorunesbyaddress flakiness). Decoder
 # pattern lifted from arbuzino/scripts/view.sh, incl. the proper protobuf
 # varint parsing (single-byte length reads corrupt responses ≥ 128 bytes).

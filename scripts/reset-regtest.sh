@@ -78,7 +78,7 @@ if not ok:
 PYEOF
 
 # Also wipe our wallet so deploy creates a fresh one
-WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheekyd.json}"
+WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheeky-bricky.json}"
 if [ -f "$WALLET_FILE" ]; then
     rm -f "$WALLET_FILE"
     echo "  wallet wiped: $WALLET_FILE"
