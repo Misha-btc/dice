@@ -114,7 +114,7 @@ fn build_roll_forced(
 /// (deposit_outpoint carrying the leftover DIESEL + all shares, leftover, next height).
 fn setup_with_bank(bank: u128) -> Result<(OutPoint, u128, u32)> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;

@@ -14,9 +14,9 @@ use crate::test_log;
 /// Tx slot for the game singleton. Result lives at {4, GAME_TX}.
 pub const GAME_TX: u128 = 0xCD;
 
-/// Harness min_bet: comfortably above the runtime's 1000 floor, far below the
-/// free-mint DIESEL amounts the tests route around.
-pub const MIN_BET: u128 = 10_000;
+/// The contract's hardcoded minimum bet (re-exported for tests). Bets below
+/// this revert.
+pub const MIN_BET: u128 = 1_000;
 
 pub fn game_id() -> AlkaneId {
     AlkaneId { block: 4, tx: GAME_TX }
@@ -52,7 +52,7 @@ pub struct CheekyBrickyDeployment {
 /// Deploy + init the game in one cellpack (gotcha: deploy via block 3
 /// IMMEDIATELY runs opcode 0, so the cellpack must carry the real init
 /// args). Bet token = DIESEL (2:0), the only currency the harness can mint.
-pub fn deploy_cheeky_bricky(min_bet: u128) -> Result<CheekyBrickyDeployment> {
+pub fn deploy_cheeky_bricky() -> Result<CheekyBrickyDeployment> {
     let mut height = 880_000u32;
 
     let game_deploy_block = create_deployment_block(
@@ -61,7 +61,7 @@ pub fn deploy_cheeky_bricky(min_bet: u128) -> Result<CheekyBrickyDeployment> {
         Cellpack {
             target: AlkaneId { block: 3, tx: GAME_TX },
             // name/symbol 0 = the "Cheeky Bricky"/"CBRK" defaults
-            inputs: vec![0, min_bet, DIESEL_ID.block, DIESEL_ID.tx, 0, 0],
+            inputs: vec![0, DIESEL_ID.block, DIESEL_ID.tx, 0, 0],
         },
     );
     index_block(&game_deploy_block, height)?;

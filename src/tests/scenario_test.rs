@@ -70,7 +70,7 @@ fn forced_win(height: u32, input: OutPoint, route_base: u128, target: u128, amou
 
 fn setup_bank(bank: u128) -> Result<(OutPoint, u128, u32)> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -132,7 +132,7 @@ fn test_two_wins_one_block_share_budget() -> Result<()> {
 #[test]
 fn test_full_withdraw_then_revive() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;

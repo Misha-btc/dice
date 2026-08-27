@@ -95,7 +95,7 @@ enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-rui
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `InitCheekyBricky` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "Cheeky Bricky"/"CBRK"); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`** (PERMAFROST pattern — one WASM, a game per token, each clone with own bank/shares); bet token ≠ self |
+| 0 | `InitCheekyBricky` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "Cheeky Bricky"/"CBRK"); min_bet is a compile-time 1000 (not an arg); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`**; bet token ≠ self |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in; CLAMPED not reverted; **`amount = 0` bets everything sent** — the primary mint-and-roll flow (`[mint] → [Roll(target,0)]`, mint size unknowable at compose time); response data `(roll, win, payout, effective_amount)` 4×u128 LE |
 | 2 | `Deposit` | `amount` | bet token → mint CBRK shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor (0=off) |
@@ -114,6 +114,7 @@ enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-rui
 /initialized       u8
 /bet_token         AlkaneId (immutable init param — mainnet 2:490)
 /name, /symbol     bytes (immutable init params — per-instance wallet identity)
+(min_bet: compile-time const 1000, not stored)
 /table/{token_id}  AlkaneId (canonical-table registry; template-only, CreateTable-only writer)
 /min_bet           u128  (immutable init param)
 /bank              u128  (LP bankroll: deposits + donations + losses − wins − withdrawals)

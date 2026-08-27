@@ -2,7 +2,7 @@
 # Cheeky Bricky — Regtest Deployment
 #
 # Deploys cheeky-bricky-game as a single immutable direct contract at 4:205 (0xCD).
-# Init (opcode 0, min_bet) runs at deploy time via the cellpack — the
+# Init (opcode 0) runs at deploy time via the cellpack — the
 # standard parameterized-init pattern for immutable alkanes.
 #
 # Usage:
@@ -16,9 +16,8 @@ PROJECT_DIR="$SCRIPT_DIR/.."
 WASM_DIR="$PROJECT_DIR/target/wasm32-unknown-unknown/release"
 source "$SCRIPT_DIR/_env.sh"
 
-MIN_BET="${MIN_BET:-100000}"   # in bet-token base units
 # Bet/bank token comes from _env.sh (regtest default: DIESEL 2:0; mainnet: 2:490
-# via BET_TOKEN_BLOCK=2 BET_TOKEN_TX=490).
+# via BET_TOKEN_BLOCK=2 BET_TOKEN_TX=490). min_bet is a compile-time 1000.
 
 if [ "${1:-}" = "--build" ]; then
     bash "$SCRIPT_DIR/build-wasms.sh"
@@ -56,7 +55,6 @@ check_success() {
 echo "═══════════════════════════════════════"
 echo "  Cheeky Bricky — Regtest Deployment"
 echo "  Network: $NETWORK / RPC: $RPC_URL"
-echo "  min_bet: $MIN_BET"
 echo "═══════════════════════════════════════"
 echo ""
 
@@ -74,7 +72,7 @@ fi
 echo "Deploying cheeky-bricky-game (with init, bet token $BET_TOKEN_BLOCK:$BET_TOKEN_TX)..."
 # Last two args: share-token name/symbol (u128-packed; 0,0 = defaults).
 check_success "cheeky-bricky-game (4:$GAME_TX) + init" \
-    "$(run "[3,$GAME_TX,0,$MIN_BET,$BET_TOKEN_BLOCK,$BET_TOKEN_TX,0,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_game.wasm")"
+    "$(run "[3,$GAME_TX,0,$BET_TOKEN_BLOCK,$BET_TOKEN_TX,0,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_game.wasm")"
 echo ""
 
 if [ "$NETWORK" = "regtest" ]; then

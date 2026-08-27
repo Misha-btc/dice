@@ -166,8 +166,8 @@ LP-owned** — the only way to earn from Cheeky Bricky is to stake the bank.
 
 ## Factory (the PERMAFROST pattern)
 
-The contract is **factory-ready**: every parameter — min_bet, bet token,
-share name/symbol — is an init argument, nothing instance-specific is
+The contract is **factory-ready**: every parameter — bet token, share
+name/symbol — is an init argument (min_bet is a compile-time 1000), nothing instance-specific is
 compiled in. One bytecode, a game per token; per-table name/symbol exist so
 wallets can tell the share tokens apart.
 
@@ -179,7 +179,7 @@ token) checks "no table for this token yet", reads the table's identity
 from the token's own 99/100 ("Brick" → "Brick House"/"hBRICK" — no
 caller-supplied strings; a token that doesn't answer the mandatory wallet
 convention reverts the creation by design), factory-clones
-the template (inheriting its `min_bet`), records the clone id — **one
+the template (min_bet is a fixed 1000), records the clone id — **one
 table per token, forever** — and returns it. The caller must attach
 ≥ 1000 units of the token: ALL of it is deposited into the newborn table
 as the creator's first LP position (shares returned) — tables are born
@@ -212,7 +212,7 @@ entire game, forever.
 /table/{token_id}     AlkaneId (registry, template only; CreateTable is the sole writer)
 /bank                 u128   (LP bankroll; deposits + losses + donations − wins − withdrawals)
 /total_shares         u128   (outstanding share units)
-/min_bet              u128   (immutable, init param)
+(min_bet is a compile-time constant 1000, not stored)
 /last_win_height      u128   (per-block budget bookkeeping)
 /paid_this_block      u128   (Σ realized net payouts at last_win_height)
 /total_bets           u128   (stats)
@@ -224,7 +224,7 @@ entire game, forever.
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `InitCheekyBricky` | `min_bet, token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); self-registers in the table registry |
+| 0 | `InitCheekyBricky` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); min_bet is a compile-time 1000; self-registers in the table registry |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless, payable in the token (≥1000-unit seed → creator's LP shares); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in `--inputs`; clamped not reverted; `amount = 0` bets everything sent (mint-and-roll); response data `(roll, win, payout, effective_amount)` |
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
@@ -277,9 +277,12 @@ alkane forwards a Roll from its own contract context and the call reverts
    (`VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1`) + revert on zero-share
    deposits. Attack is a guaranteed ~50% loss for the attacker (tested).
 3. **Share token branding**: `GetName` = "Cheeky Bricky", `GetSymbol` = "CBRK".
-4. **Init params** (immutable): `min_bet` (≥ 1000, a rounding/dust floor) and
-   the bet/bank token id — **mainnet 2:490**; the id is a parameter (not a
-   hardcode) so the test harness can run on mintable DIESEL.
+4. **Init params** (immutable): the bet/bank token id — **mainnet 2:490** (a
+   parameter, not a hardcode, so the harness can run on mintable DIESEL) plus
+   the share name/symbol. `min_bet` is a compile-time constant **1000**
+   (2026-08-27, owner's call — dropped as an init arg: 1000 is a safe rounding
+   floor, dust is deterred by network fees, and a fixed value removes an
+   immutable knob + the mis-scaling footgun).
 
 2026-08-26 (the UX pass — reverts and tiny limits were the owner's concerns):
 5. Launch-rich edge + auth-token lowering was designed and built here
@@ -311,13 +314,12 @@ alkane forwards a Roll from its own contract context and the call reverts
 sharp edges are worth accepting on record BEFORE deploy (none are protocol
 bugs; all are isolated to the offending table):
 
-1. **`min_bet` is inherited from the template** and identical across every
-   canonical table. It is denominated in the bet token's base units, so a
-   token with very different decimals than the template's currency gets a
-   `min_bet` that may be too large (nobody can bet) or too small (dust). The
-   table still works; it's just mis-scaled. There is no per-table min_bet by
-   design (one product constant). Mitigation is social: create canonical
-   tables only for tokens whose unit scale matches.
+1. **`min_bet` is a fixed compile-time 1000** for every table (no init arg,
+   no per-table value). 1000 base units is dust for a normal-decimals token
+   (fine), but for a 0-decimals / tiny-supply token it can be a meaningfully
+   large minimum, making such a table awkward to bet on. Accepted: flagship
+   tokens have ample decimals; exotic low-unit tokens are a niche a fixed
+   floor doesn't serve.
 
 2. **A table can be created for another table's SHARES.** Share tokens are
    ordinary alkanes that implement 99/100, so `CreateTable{hBRICK}` succeeds —
@@ -341,5 +343,4 @@ for their own use; it just won't be the registered one.
    ready; not yet exercised against docker in this environment). Fuel audit
    (`fuel_audit_test`, CreateTable ≈ 19% of the 3.5M floor) and the
    block-budget / full-withdraw scenarios (`scenario_test`) are DONE.
-2. Production `min_bet` (product decision; in the bet token's base units).
 3. Bank seeding plan (Donate from treasury vs LP-first launch).

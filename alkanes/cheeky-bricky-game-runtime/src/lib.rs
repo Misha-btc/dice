@@ -45,10 +45,14 @@ use cheeky_bricky_math::{
     withdraw_payout, EDGE_BPS, T_MIN,
 };
 
-/// Floor for the immutable `min_bet` init param: keeps payout flooring
-/// meaningful at the loosest multiplier (×1.05 needs ≥20 units to beat the
-/// stake by ≥1; 1000 gives comfortable margin) and blocks dust spam.
-const MIN_BET_FLOOR: u128 = 1_000;
+/// The minimum bet, hardcoded (no init parameter). Its only load-bearing job
+/// is keeping payout flooring meaningful: at the loosest target (×1.01, ~98%)
+/// the win-over-stake margin is ~1% of the bet, so ~100 units already survive
+/// the floor; 1000 is a comfortable, safe constant. Dust-spam is already
+/// deterred by the Bitcoin network fee (far larger than any dust bet), so no
+/// per-deploy tuning is needed — a fixed 1000 removes an immutable knob and
+/// the "min_bet mis-scaled for this token" footgun.
+pub const MIN_BET: u128 = 1_000;
 
 /// Creating a canonical table requires seeding its bank with at least this
 /// many units of the token, deposited as the creator's LP position — tables
@@ -141,21 +145,20 @@ fn pack_str(s: &str) -> u128 {
 pub trait CheekyBrickyBase: AlkaneResponder {
     // ---- Init ----
 
-    /// One-time. `min_bet` (≥ 1000), the bet/bank token id, and the share
-    /// token's name/symbol (one u128 each, standard LE packing; `0` = the
-    /// "Cheeky Bricky"/"CBRK" defaults) — immutable afterwards, like
-    /// everything else: the edge is a compile-time 1% and there is no
+    /// One-time. The bet/bank token id and the share token's name/symbol
+    /// (one u128 each, standard LE packing; `0` = the "Cheeky Bricky"/"CBRK"
+    /// defaults) — immutable afterwards, like everything else: the edge is a
+    /// compile-time 1%, the min bet a compile-time 1000, and there is no
     /// privileged capability of any kind.
     ///
-    /// **Factory-ready** (the PERMAFROST pattern): every parameter is an
-    /// init argument, so one deployed WASM serves any number of instances —
-    /// clone via `[6, TEMPLATE_TX, 0, min_bet, token_block, token_tx, name,
-    /// symbol]` to spin up an independent game (own bank, own shares) for
-    /// any token without re-deploying bytecode. Direct deploy runs the same
-    /// init via `[3, TX, 0, ...]` (gotcha: deploy auto-runs opcode 0).
+    /// **Factory-ready** (the PERMAFROST pattern): one deployed WASM serves
+    /// any number of instances — clone via `[6, TEMPLATE_TX, 0, token_block,
+    /// token_tx, name, symbol]` to spin up an independent game (own bank, own
+    /// shares) for any token without re-deploying bytecode. Direct deploy
+    /// runs the same init via `[3, TX, 0, ...]` (gotcha: deploy auto-runs
+    /// opcode 0).
     fn init_cheeky_bricky(
         &self,
-        min_bet: u128,
         token_block: u128,
         token_tx: u128,
         name: u128,
@@ -163,9 +166,6 @@ pub trait CheekyBrickyBase: AlkaneResponder {
     ) -> Result<CallResponse> {
         if !ptr("/initialized").get().is_empty() {
             return Err(anyhow!("already initialized"));
-        }
-        if min_bet < MIN_BET_FLOOR {
-            return Err(anyhow!("min_bet must be >= {}", MIN_BET_FLOOR));
         }
         if token_block == 0 && token_tx == 0 {
             return Err(anyhow!("bet token id must be non-zero"));
@@ -179,7 +179,6 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         let mut init_marker = ptr("/initialized");
         init_marker.set(Arc::new(vec![1]));
 
-        write_u128(ptr("/min_bet"), min_bet);
         write_alkane_id(ptr("/bet_token"), &token);
         write_u128(ptr("/bank"), 0);
         write_u128(ptr("/total_shares"), 0);
@@ -293,17 +292,13 @@ pub trait CheekyBrickyBase: AlkaneResponder {
             pack_str(&format!("h{}", tsym))
         };
 
-        // Same min_bet across every canonical table (a product constant of
-        // this deployment).
-        let min_bet = read_u128(ptr("/min_bet"));
-
         // Factory-clone ourselves. Capture the sequence BEFORE the call
         // (arbuzino gotcha #6): that is the clone's 2:seq id.
         let clone_seq = self.sequence();
         self.call(
             &Cellpack {
                 target: AlkaneId { block: 6, tx: context.myself.tx },
-                inputs: vec![0, min_bet, token_block, token_tx, table_name, table_sym],
+                inputs: vec![0, token_block, token_tx, table_name, table_sym],
             },
             &AlkaneTransferParcel::default(),
             self.fuel(),
@@ -391,9 +386,8 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         // 0 = bet everything sent (the mint-and-roll flow above).
         let amount = if amount == 0 { incoming } else { amount };
 
-        let min_bet = read_u128(ptr("/min_bet"));
-        if amount < min_bet {
-            return Err(anyhow!("bet {} below min_bet {}", amount, min_bet));
+        if amount < MIN_BET {
+            return Err(anyhow!("bet {} below min_bet {}", amount, MIN_BET));
         }
         if incoming < amount {
             return Err(anyhow!(
@@ -426,11 +420,11 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         } else {
             amount
         };
-        if effective < min_bet {
+        if effective < MIN_BET {
             return Err(anyhow!(
                 "bank/block capacity too low right now: clamped bet {} below min_bet {}",
                 effective,
-                min_bet
+                MIN_BET
             ));
         }
         if effective < min_amount {
@@ -747,7 +741,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         let mut response = CallResponse::forward(&context.incoming_alkanes);
         let token = bet_token().unwrap_or(AlkaneId { block: 0, tx: 0 });
         let mut out = Vec::with_capacity(96);
-        out.extend_from_slice(&read_u128(ptr("/min_bet")).to_le_bytes());
+        out.extend_from_slice(&MIN_BET.to_le_bytes());
         out.extend_from_slice(&EDGE_BPS.to_le_bytes());
         out.extend_from_slice(&T_MIN.to_le_bytes());
         out.extend_from_slice(&t_max(EDGE_BPS).to_le_bytes());

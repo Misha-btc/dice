@@ -12,17 +12,16 @@ use cheeky_bricky_game_runtime::CheekyBrickyBase;
 
 #[derive(MessageDispatch)]
 pub enum CheekyBrickyMessage {
-    /// One-time init: `min_bet` (≥ 1000), the bet/bank token id (mainnet:
-    /// 2:490), and the share token's name/symbol (u128-packed LE strings,
-    /// `0` = "Cheeky Bricky"/"CBRK" defaults) — immutable afterwards, like
-    /// everything else (the 1% edge is compiled in). **Factory-ready**:
+    /// One-time init: the bet/bank token id (mainnet: 2:490) and the share
+    /// token's name/symbol (u128-packed LE strings, `0` = "Cheeky
+    /// Bricky"/"CBRK" defaults) — immutable afterwards, like everything else
+    /// (the 1% edge and the 1000 min-bet are compiled in). **Factory-ready**:
     /// clone the deployed template for ANY token via
-    /// `[6, TEMPLATE_TX, 0, min_bet, tb, tt, name, symbol]` — each clone is
-    /// an independent game (own bank/shares). Direct deploy:
+    /// `[6, TEMPLATE_TX, 0, tb, tt, name, symbol]` — each clone is an
+    /// independent game (own bank/shares). Direct deploy:
     /// `[3, TX, 0, ...]` (gotcha: deploy runs opcode 0).
     #[opcode(0)]
     InitCheekyBricky {
-        min_bet: u128,
         token_block: u128,
         token_tx: u128,
         name: u128,

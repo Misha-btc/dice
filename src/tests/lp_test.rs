@@ -67,7 +67,7 @@ fn run_op(
 #[test]
 fn test_deposit_mints_shares_and_returns_change() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -89,7 +89,7 @@ fn test_deposit_mints_shares_and_returns_change() -> Result<()> {
 #[test]
 fn test_withdraw_burns_shares_and_pays_pro_rata() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -123,7 +123,7 @@ fn test_withdraw_burns_shares_and_pays_pro_rata() -> Result<()> {
 #[test]
 fn test_withdraw_slippage_floor_reverts() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -148,7 +148,7 @@ fn test_withdraw_slippage_floor_reverts() -> Result<()> {
 #[test]
 fn test_donate_grows_bank_without_shares() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -167,7 +167,7 @@ fn test_donate_grows_bank_without_shares() -> Result<()> {
 #[test]
 fn test_deposit_underpaid_reverts_and_refunds() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;

@@ -64,7 +64,7 @@ fn table_of(host: &AlkaneId, token: &AlkaneId) -> AlkaneId {
 #[test]
 fn test_table_registry_one_table_per_token_forever() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let zero = AlkaneId { block: 0, tx: 0 };
 
@@ -78,7 +78,7 @@ fn test_table_registry_one_table_per_token_forever() -> Result<()> {
         h,
         Cellpack {
             target: AlkaneId { block: 6, tx: GAME_TX },
-            inputs: vec![0, MIN_BET, DIESEL_ID.block, DIESEL_ID.tx, pack("WILD"), pack("WLD")],
+            inputs: vec![0, DIESEL_ID.block, DIESEL_ID.tx, pack("WILD"), pack("WLD")],
         },
         None,
     );
@@ -187,7 +187,7 @@ fn test_reinit_is_rejected() -> Result<()> {
     // The /initialized marker makes init one-shot: a second init call with
     // different params must revert and change nothing.
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let h = deploy.last_height;
 
     let attack = create_operation_block(
@@ -196,7 +196,7 @@ fn test_reinit_is_rejected() -> Result<()> {
             target: game_id(),
             // attacker tries to re-point the game at another token with a
             // different min_bet and their own branding
-            inputs: vec![0, 777_777, 4, 0x999, pack("EVIL"), pack("EVL")],
+            inputs: vec![0, 4, 0x999, pack("EVIL"), pack("EVL")],
         },
         None,
     );
@@ -213,7 +213,7 @@ fn test_reinit_is_rejected() -> Result<()> {
 #[test]
 fn test_factory_clone_spins_an_independent_game() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
 
     // Clone the template via the factory (block 6) with its own identity.
@@ -223,7 +223,7 @@ fn test_factory_clone_spins_an_independent_game() -> Result<()> {
         h,
         Cellpack {
             target: AlkaneId { block: 6, tx: GAME_TX },
-            inputs: vec![0, MIN_BET, DIESEL_ID.block, DIESEL_ID.tx, pack("FROSTY"), pack("FRT")],
+            inputs: vec![0, DIESEL_ID.block, DIESEL_ID.tx, pack("FROSTY"), pack("FRT")],
         },
         None,
     );

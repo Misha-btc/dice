@@ -46,7 +46,7 @@ fn diesel_at(o: &OutPoint) -> u128 {
 #[test]
 fn test_roll_rejects_contract_caller() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let g = game_id();
 

@@ -58,7 +58,7 @@ fn print_table(rows: &[(&str, u64)]) {
 #[test]
 fn fuel_audit_all_opcodes() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky(MIN_BET)?;
+    let deploy = deploy_cheeky_bricky()?;
     let mut h = deploy.last_height;
     let g = game_id();
 
@@ -70,7 +70,7 @@ fn fuel_audit_all_opcodes() -> Result<()> {
         h,
         Cellpack {
             target: AlkaneId { block: 6, tx: GAME_TX },
-            inputs: vec![0, MIN_BET, DIESEL_ID.block, DIESEL_ID.tx, 0, 0],
+            inputs: vec![0, DIESEL_ID.block, DIESEL_ID.tx, 0, 0],
         },
         None,
     );
