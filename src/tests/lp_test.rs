@@ -102,21 +102,27 @@ fn test_withdraw_burns_shares_and_pays_pro_rata() -> Result<()> {
     // Burn half the shares. The deposit outpoint also holds the DIESEL change,
     // which is NOT edicted into the call — it rides along to the new vout 0.
     let burn = total_shares / 2;
-    let expected_payout = withdraw_payout(burn, amount, total_shares);
+    let gross_payout = withdraw_payout(burn, amount, total_shares);
+    // 2% LP-exit fee is carved off the gross payout: the LP receives 98%, the
+    // fee accrues in /fee_accum (still in the contract's bank-token balance).
+    let fee = gross_payout * 200 / 10_000;
+    let lp_payout = gross_payout - fee;
     let ride_along = minted - amount;
     let out = run_op(h, vec![OP_WITHDRAW, burn, 0], dep_out, game_id(), burn)?;
 
     assert_eq!(
         diesel_at(&out),
-        ride_along + expected_payout,
-        "payout + riding change"
+        ride_along + lp_payout,
+        "net (98%) payout + riding change"
     );
     assert_eq!(shares_at(&out), total_shares - burn, "unburned shares ride along");
 
     let v = call_view(VIEW_BANK);
-    assert_eq!(v[0], amount - expected_payout, "bank drained by exactly the payout");
+    // Bank drops by the FULL gross payout; the fee just moved from bank into the
+    // separate /fee_accum, still held by the contract.
+    assert_eq!(v[0], amount - gross_payout, "bank drained by the gross payout");
     assert_eq!(v[1], total_shares - burn, "supply dropped by the burn");
-    test_log!("[LP] withdraw ok: burned {}, paid {}", burn, expected_payout);
+    test_log!("[LP] withdraw ok: burned {}, gross {}, fee {}, lp {}", burn, gross_payout, fee, lp_payout);
     Ok(())
 }
 

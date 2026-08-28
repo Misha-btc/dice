@@ -80,6 +80,12 @@ pub enum CheekyBrickyMessage {
     #[opcode(5)]
     Donate { amount: u128 },
 
+    /// Permissionless: sweep this table's accrued 2% LP-exit fees (in the bet
+    /// token) to the hardcoded operator treasury. Fixed destination — anyone
+    /// can trigger, nobody can redirect. Reverts on zero.
+    #[opcode(6)]
+    SweepFees,
+
     /// Standard fungible-token name — wallets probe this (shares live in
     /// wallets, so the 99/100 convention is load-bearing).
     #[opcode(99)]

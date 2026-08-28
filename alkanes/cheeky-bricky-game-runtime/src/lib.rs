@@ -42,7 +42,7 @@ use std::sync::Arc;
 use cheeky_bricky_math::{
     block_budget, is_win, max_amount_for_exposure, max_bet, max_net_profit, net_exposure,
     payout_total, roll as roll_entropy, shares_for_deposit, t_max, validate_target,
-    withdraw_payout, EDGE_BPS, T_MIN,
+    withdraw_payout, mul_div, BPS, EDGE_BPS, T_MIN,
 };
 
 /// The minimum bet, hardcoded (no init parameter). Its only load-bearing job
@@ -53,6 +53,19 @@ use cheeky_bricky_math::{
 /// per-deploy tuning is needed — a fixed 1000 removes an immutable knob and
 /// the "min_bet mis-scaled for this token" footgun.
 pub const MIN_BET: u128 = 1_000;
+
+/// LP-exit fee: 2% of a withdrawal is kept for the operator (players never pay
+/// a house rake — the whole 1% edge still goes to LPs; only LPs pay this, once,
+/// on the way out). Accrued in the table's bet token and swept to the treasury.
+pub const EXIT_BPS: u128 = 200;
+
+/// The operator's fee collector (hardcoded — like arbuzino's vault sink — so a
+/// permissionless caller can't redirect the sweep). Deploy the treasury at this
+/// slot BEFORE the game template.
+pub const TREASURY_ID: AlkaneId = AlkaneId { block: 4, tx: 0x7EA5 };
+
+/// The treasury's Collect opcode (accepts + holds any incoming).
+const TREASURY_COLLECT_OP: u128 = 1;
 
 
 // ---------- Storage helpers (mirror fireball-game-runtime) ----------
@@ -579,10 +592,16 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         if payout == 0 {
             return Err(anyhow!("payout would be zero — not burning shares for nothing"));
         }
-        if payout < min_payout {
+
+        // 2% exit fee for the operator: split off the gross payout, keep it in
+        // the contract (bet token) as /fee_accum, pay the LP the remaining 98%.
+        // The min_payout slippage floor applies to what the LP actually gets.
+        let fee = mul_div(payout, EXIT_BPS, BPS);
+        let lp_amount = payout - fee;
+        if lp_amount < min_payout {
             return Err(anyhow!(
-                "withdraw slippage: payout {} below min_payout {}",
-                payout,
+                "withdraw slippage: net payout {} below min_payout {}",
+                lp_amount,
                 min_payout
             ));
         }
@@ -590,9 +609,12 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         write_u128(ptr("/total_shares"), total_shares - shares);
         // payout ≤ bank proven in cheeky-bricky-math (withdraw_never_exceeds_bank).
         write_u128(ptr("/bank"), bank.saturating_sub(payout));
+        // Accrue the fee (stays in the contract's bet-token balance).
+        let fa = ptr("/fee_accum");
+        write_u128(fa.clone(), read_u128(fa).saturating_add(fee));
 
         let mut response = CallResponse::default();
-        let mut token_back = payout;
+        let mut token_back = lp_amount;
         for t in context.incoming_alkanes.0.iter() {
             if t.id == context.myself {
                 continue; // consumed (burned) + change pushed below
@@ -616,6 +638,32 @@ pub trait CheekyBrickyBase: AlkaneResponder {
             });
         }
         Ok(response)
+    }
+
+    // ---- SweepFees ----
+
+    /// Permissionless: sweep this table's accrued exit fees (the 2% carve-out,
+    /// in the bet token) to the hardcoded treasury. Anyone may trigger it, but
+    /// the destination is fixed, so the fee can only ever reach the operator's
+    /// collector. Checks-effects-interactions: the accumulator is zeroed BEFORE
+    /// the external call, and alkanes reverts all state on a propagated error,
+    /// so the fee either fully moves or stays put. A broken treasury can only
+    /// fail the sweep — it never blocks LP withdrawals (which never call it).
+    fn sweep_fees(&self) -> Result<CallResponse> {
+        let token = bet_token()?;
+        let fee = read_u128(ptr("/fee_accum"));
+        if fee == 0 {
+            return Err(anyhow!("no accrued fees to sweep"));
+        }
+        write_u128(ptr("/fee_accum"), 0);
+        let parcel = AlkaneTransferParcel(vec![AlkaneTransfer { id: token, value: fee }]);
+        self.call(
+            &Cellpack { target: TREASURY_ID, inputs: vec![TREASURY_COLLECT_OP] },
+            &parcel,
+            self.fuel(),
+        )?;
+        let context = self.context()?;
+        Ok(CallResponse::forward(&context.incoming_alkanes))
     }
 
     // ---- Donate ----

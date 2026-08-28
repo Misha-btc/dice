@@ -151,8 +151,9 @@ fn test_full_withdraw_then_revive() -> Result<()> {
     let dep_out = op_outpoint(&dep);
     h += 1;
 
-    // Withdraw ALL shares.
-    let payout = withdraw_payout(total_shares, amount, total_shares);
+    // Withdraw ALL shares. The LP receives 98% (2% exit fee → /fee_accum).
+    let gross = withdraw_payout(total_shares, amount, total_shares);
+    let payout = gross - gross * 200 / 10_000;
     let wd = create_op_block_with_token_input(
         h,
         Cellpack { target: game_id(), inputs: vec![OP_WITHDRAW, total_shares, 0] },

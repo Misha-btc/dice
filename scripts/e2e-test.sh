@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Cheeky Bricky end-to-end smoke test on regtest. The critical LP+player loop:
-#   1. Deploy the game (init) + mine DIESEL
+#   1. Deploy the game + treasury (init) + mine DIESEL
 #   2. Become the house: deposit → mint CBRK shares (bank funded)
 #   3. Play: several rolls (wins pay out, losses feed the bank) via traces
-#   4. Withdraw: burn shares → pro-rata DIESEL back
-#   5. Views throughout (bank / stats / config)
+#   4. Withdraw: burn shares → 98% DIESEL back (2% exit fee → /fee_accum)
+#   5. Sweep the accrued exit fee into the operator treasury
+#   6. Views throughout (bank / stats / config)
 #
 # CreateTable / the registry are exercised by the integration suite
 # (factory_test) and fuel-audited (fuel_audit_test); a full second-token
@@ -67,7 +68,13 @@ fi
 bash "$SCRIPT_DIR/view.sh" bank
 echo ""
 
-echo "[5/5] Final config + stats"
+echo "[5/6] Sweep accrued 2% exit fee → treasury"
+bash "$SCRIPT_DIR/sweep-fees.sh" > /tmp/cheeky-bricky-e2e-sweep.log 2>&1 \
+    && ok "swept exit fees to treasury 4:$TREASURY_TX" \
+    || echo "  (nothing to sweep, or see /tmp/cheeky-bricky-e2e-sweep.log)"
+echo ""
+
+echo "[6/6] Final config + stats"
 bash "$SCRIPT_DIR/view.sh" config
 bash "$SCRIPT_DIR/view.sh" stats
 echo ""

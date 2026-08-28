@@ -74,8 +74,9 @@ Runtime support confirmed: `alkanes-runtime` exposes `block_header()` and
 
 `EDGE_BPS = 100` — a compile-time constant, the industry-standard dice edge
 (just-dice's number). No admin, no auth token, no knob: nobody can change it
-in either direction, ever. **The whole edge accrues to the bank — only LPs
-earn.** No protocol fee, no vault bridge, no skim of any kind.
+in either direction, ever. **The whole edge accrues to the bank — players pay
+no house rake.** The operator's only cut is a separate 2% fee an LP pays *when
+withdrawing* (see "Operator revenue" below) — never a skim on play.
 
 ### The Kelly cap — the LP guarantee (this is the whole point)
 
@@ -143,10 +144,13 @@ player's wallet. Both modes coexist in the UI as a toggle.
 - `Deposit { amount }`: bet token in → mint fungible **share units of the game
   alkane itself** (same self-mint machinery as the existing vault; no NFTs).
   Shares minted = `amount · total_shares / B` (1:1 bootstrap).
-- `Withdraw { shares, min_payout }`: burn shares → `shares · B / total_shares`
-  of the bet token out. `min_payout` is the slippage floor (share price moves
-  with every bet; pattern ported from the vault's redeem). Overpaid shares
-  returned as change.
+- `Withdraw { shares, min_payout }`: burn shares → gross `shares · B / total_shares`
+  of the bet token; **a 2% exit fee (`EXIT_BPS = 200`) is retained in `/fee_accum`
+  and the LP receives 98%** (see "Operator revenue"). The bank is debited by the
+  full gross; the fee just moves from `/bank` into `/fee_accum` (both bet-token,
+  both held by the contract). `min_payout` is the slippage floor applied to the
+  NET amount the LP receives (share price moves with every bet; pattern ported
+  from the vault's redeem). Overpaid shares returned as change.
 - Share price `B / total_shares` only changes through game results and
   donations — deposits/withdrawals are neutral by construction (`mul_div` from
   `fireball-vault-math`, reused).
@@ -157,12 +161,34 @@ player's wallet. Both modes coexist in the UI as a toggle.
 - `Donate { amount }`: grows B without minting — a gift to LPs (marketing
   pumps, treasury seeding).
 
-## No protocol fee (final)
+## Operator revenue: a 2% LP-exit fee (2026-08-27)
 
-There is **no fee of any kind**: the payout multiplier embeds the full edge
-and every losing stake lands in the LP bank whole. No `/fee_accumulator`,
-no vault bridge, no admin skim. The pitch is clean: **the house is 100%
-LP-owned** — the only way to earn from Cheeky Bricky is to stake the bank.
+Players still pay **no house rake** — the payout multiplier embeds the full 1%
+edge and every losing stake lands in the LP bank whole. The operator's only
+revenue is a **2% fee on LP withdrawals** (`EXIT_BPS = 200`), chosen by the owner
+over a per-bet protocol fee precisely because it never touches the player-facing
+odds and only charges capital that is *leaving* the house.
+
+Flow (all in the bet token):
+1. `Withdraw` retains 2% of the gross payout in `/fee_accum` (the LP gets 98%).
+   The fee stays in the contract's own balance — no external call on the hot path,
+   so a broken treasury can never block an LP exit.
+2. `SweepFees` (opcode 6, **permissionless**) drains `/fee_accum` into the
+   hardcoded `TREASURY_ID = 4:0x7EA5` via its `Collect` op. The destination is
+   compiled in, so a permissionless caller cannot redirect it. Checks-effects-
+   interactions: `/fee_accum` is zeroed *before* the external call, and alkanes
+   reverts all state on a propagated error, so the fee either fully moves or stays
+   put — never lost. Reverts on a zero balance.
+3. The **treasury** (`cheeky-bricky-treasury`, a standalone contract) holds the
+   fees and lets its **owner** withdraw them (`Withdraw{token, amount}`, opcode 2).
+   Ownership is a single self-unit key minted to the deployer at init (the
+   std-proxy pattern — no external auth factory); the key is spent into the call
+   and returned with the payout. `Collect` (opcode 1) is permissionless so the
+   game's sweep can always land.
+
+This mirrors arbuzino's fee→vault bridge in *structure* (accrue, then a
+permissionless sweep to a hardcoded sink) but the sink is the operator's
+collector, not a staker vault.
 
 ## Factory (the PERMAFROST pattern)
 
@@ -194,14 +220,19 @@ for them. Guards: the bet token must not be the instance itself, and init
 runs once per instance (`/initialized`, re-init attack tested). Verified
 end-to-end in `factory_test`.
 
-## No privileged capability
+## No privileged capability on the game
 
-There is none — by the owner's final call (2026-08-27). Earlier designs had
-an auth token that could lower a richer launch edge over time; it was
-removed together with the whole dynamic-edge machinery. The contract has no
-owner, no admin op, no upgrade path, and no external dependency (the
-auth-token factory requirement at 4:0xffed is gone). What is deployed is the
-entire game, forever.
+The **game** has none — by the owner's final call (2026-08-27). Earlier designs
+had an auth token that could lower a richer launch edge over time; it was
+removed together with the whole dynamic-edge machinery. The game has no owner,
+no admin op, no upgrade path. `SweepFees` is permissionless with a hardcoded
+destination, so it grants no privilege. What is deployed is the entire game,
+forever.
+
+The **treasury** is a separate contract and *does* have one privileged op —
+owner-key `Withdraw`. That privilege is deliberately isolated there: the game
+never depends on it, and the treasury holds only already-earned exit fees. The
+owner key is minted once at deploy; guard it.
 
 ## Storage sketch
 
@@ -215,9 +246,14 @@ entire game, forever.
 (min_bet is a compile-time constant 1000, not stored)
 /last_win_height      u128   (per-block budget bookkeeping)
 /paid_this_block      u128   (Σ realized net payouts at last_win_height)
+/fee_accum            u128   (accrued 2% LP-exit fees, bet-token; drained by SweepFees)
 /total_bets           u128   (stats)
 /total_wagered        u128   (stats: Σ effective bets)
 /total_won            u128   (stats: Σ payouts)
+
+treasury (separate contract, 4:0x7EA5):
+/initialized          u8     (one-shot; init mints 1 owner-key unit to the deployer)
+  (no other state — the owner key is a self-unit alkane, fees are the held balance)
 ```
 
 ## Opcode sketch
@@ -228,14 +264,23 @@ entire game, forever.
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in `--inputs`; clamped not reverted; `amount = 0` bets everything sent (mint-and-roll); response data `(roll, win, payout, effective_amount)` |
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
-| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor |
+| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token minus the 2% exit fee (LP gets 98%, fee → `/fee_accum`); slippage floor on the net |
 | 5 | `Donate` | `amount` | grow the bank, no shares |
+| 6 | `SweepFees` | — | permissionless; drain `/fee_accum` → treasury `4:0x7EA5` (hardcoded, CEI, reverts on zero) |
 | 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Cheeky Bricky" / "CBRK" |
 | 101 | `ViewBank` | — | `(bank, total_shares)` |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx)` |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank+edge |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
+
+### treasury (4:0x7EA5)
+
+| Opcode | Name | Args | Notes |
+|--------|------|------|-------|
+| 0 | `Init` | — | one-time; mints 1 owner-key unit to the deployer |
+| 1 | `Collect` | — | permissionless; accept + hold any incoming (SweepFees lands here) |
+| 2 | `Withdraw` | `token_block, token_tx, amount` | owner-only (attach the 1-unit key, returned with the payout); sends `amount` of the named token to the caller |
 
 ## Miner caveat (accepted, immutable)
 
@@ -271,8 +316,10 @@ alkane forwards a Roll from its own contract context and the call reverts
 ## Decisions taken at implementation
 
 2026-08-25:
-1. **No protocol fee**: the originally-drafted 0.1% → vault 4:777 bridge was
-   REMOVED on the owner's call ("зарабатывать будут только LP").
+1. **No per-bet protocol fee**: the originally-drafted 0.1% → vault 4:777 bridge
+   was REMOVED on the owner's call ("зарабатывать будут только LP"). Superseded
+   2026-08-27 by a **2% LP-exit fee to an operator treasury** (see item 8) — the
+   player-facing edge is still 100% LP; the operator earns only on withdrawals.
 2. **First-depositor mitigation**: OZ-style virtual offset
    (`VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1`) + revert on zero-share
    deposits. Attack is a guaranteed ~50% loss for the attacker (tested).
@@ -303,10 +350,21 @@ alkane forwards a Roll from its own contract context and the call reverts
 2026-08-27 (the immutability pass):
 9. **Auth token REMOVED, edge fixed at 1% forever** (`EDGE_BPS = 100`, the
    owner: "без auth токена — сразу минимальный процент"). No privileged
-   capability of any kind remains; the 4:0xffed dependency is gone. The
+   capability on the game remains; the 4:0xffed dependency is gone. The
    floor multiplier was relaxed to **×1.01** (`MIN_WIN_MULT_BPS = 10_100`)
    so the slider reaches the classic **98%** ceiling (T = 64 238) right
    away.
+
+2026-08-27 (operator revenue):
+10. **2% LP-exit fee → operator treasury** (`EXIT_BPS = 200`; owner chose
+    "operator (treasury)" + "2%" over a per-bet fee). Withdraw keeps 2% of the
+    gross in `/fee_accum` (LP nets 98%); the permissionless `SweepFees` (opcode 6)
+    pushes it to the hardcoded `TREASURY_ID = 4:0x7EA5`. The treasury is a small
+    standalone contract; ownership is a self-unit key (std-proxy pattern), so no
+    external auth factory is needed. Kept the fee off the hot path (accrue + sweep,
+    not a direct call on withdraw) so a broken treasury can never freeze exits.
+    `TREASURY_ID` is hardcoded rather than an init arg — keeps the game's init
+    signature and the whole test suite untouched, and prevents redirection.
 
 ## Permissionless-table footguns (acknowledged, immutable)
 

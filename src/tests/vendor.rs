@@ -11,3 +11,8 @@ pub fn get_cheeky_bricky_game_wasm_bytes() -> &'static [u8] {
 pub fn get_attacker_wasm_bytes() -> &'static [u8] {
     include_bytes!("./wasm/cheeky_bricky_attacker.wasm")
 }
+
+/// cheeky-bricky-treasury — the operator fee collector the game sweeps into.
+pub fn get_treasury_wasm_bytes() -> &'static [u8] {
+    include_bytes!("./wasm/cheeky_bricky_treasury.wasm")
+}

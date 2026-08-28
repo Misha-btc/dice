@@ -11,3 +11,4 @@ pub mod factory_test;
 pub mod flash_attack_test;
 pub mod fuel_audit_test;
 pub mod scenario_test;
+pub mod exit_fee_test;

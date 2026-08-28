@@ -16,6 +16,7 @@ cd "$PROJECT_DIR"
 # flash_attack_test (never deployed).
 CC="/opt/homebrew/opt/llvm/bin/clang" cargo build --release --target wasm32-unknown-unknown -p cheeky-bricky-game
 CC="/opt/homebrew/opt/llvm/bin/clang" cargo build --release --target wasm32-unknown-unknown -p cheeky-bricky-attacker
+CC="/opt/homebrew/opt/llvm/bin/clang" cargo build --release --target wasm32-unknown-unknown -p cheeky-bricky-treasury
 
 echo ""
 echo "Built WASMs:"
@@ -24,6 +25,7 @@ ls -la "$WASM_DIR"/*.wasm 2>/dev/null || echo "No WASMs found"
 mkdir -p "$TEST_WASM_DIR"
 cp "$WASM_DIR/cheeky_bricky_game.wasm" "$TEST_WASM_DIR/"
 cp "$WASM_DIR/cheeky_bricky_attacker.wasm" "$TEST_WASM_DIR/"
-echo "Copied cheeky_bricky_game.wasm + cheeky_bricky_attacker.wasm to $TEST_WASM_DIR"
+cp "$WASM_DIR/cheeky_bricky_treasury.wasm" "$TEST_WASM_DIR/"
+echo "Copied cheeky_bricky_game.wasm + attacker + treasury to $TEST_WASM_DIR"
 echo "(frost_token.wasm / alkanes_std_proxy.wasm are vendored build artifacts)"
 echo "Done."
