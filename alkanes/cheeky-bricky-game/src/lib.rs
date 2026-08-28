@@ -80,11 +80,12 @@ pub enum CheekyBrickyMessage {
     #[opcode(5)]
     Donate { amount: u128 },
 
-    /// Permissionless: sweep this table's accrued 2% LP-exit fees (in the bet
-    /// token) to the hardcoded operator treasury. Fixed destination — anyone
-    /// can trigger, nobody can redirect. Reverts on zero.
+    /// Operator-only: withdraw this table's accrued 2% LP-exit fees (in the bet
+    /// token) to the caller. Requires the hardcoded operator auth key
+    /// (`OPERATOR_AUTH_ID`) in the inputs — spent-and-returned, so one key
+    /// drains every table. Reverts on a missing key or a zero balance.
     #[opcode(6)]
-    SweepFees,
+    WithdrawFees,
 
     /// Standard fungible-token name — wallets probe this (shares live in
     /// wallets, so the 99/100 convention is load-bearing).
@@ -97,7 +98,7 @@ pub enum CheekyBrickyMessage {
     #[returns(String)]
     GetSymbol,
 
-    /// View: `(bank, total_shares)` 2×u128 LE.
+    /// View: `(bank, total_shares, fee_accum)` 3×u128 LE.
     #[opcode(101)]
     #[returns(Vec<u8>)]
     ViewBank,

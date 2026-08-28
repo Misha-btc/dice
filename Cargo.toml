@@ -3,7 +3,7 @@ members = [
     "alkanes/cheeky-bricky-game",
     "alkanes/cheeky-bricky-game-runtime",
     "alkanes/cheeky-bricky-attacker",
-    "alkanes/cheeky-bricky-treasury",
+    "alkanes/cheeky-bricky-operator",
     "crates/cheeky-bricky-math",
 ]
 resolver = "2"

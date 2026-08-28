@@ -69,12 +69,12 @@ if [ "$NETWORK" = "regtest" ]; then
     echo ""
 fi
 
-echo "Deploying cheeky-bricky-treasury (exit-fee sink, 4:$TREASURY_TX)..."
-# Init (opcode 0) mints ONE owner-key unit to your deploy address — guard it,
-# it's the only key that can withdraw collected fees. Deploy BEFORE the game so
-# the game's hardcoded TREASURY_ID resolves.
-check_success "cheeky-bricky-treasury (4:$TREASURY_TX) + init" \
-    "$(run "[3,$TREASURY_TX,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_treasury.wasm")"
+echo "Deploying cheeky-bricky-operator (fee-withdrawal auth key, 4:$OPERATOR_TX)..."
+# Init (opcode 0) mints ONE auth-key unit to your deploy address — guard it,
+# it's the only key that can withdraw a table's fees. Deploy BEFORE the game so
+# the game's hardcoded OPERATOR_AUTH_ID resolves.
+check_success "cheeky-bricky-operator (4:$OPERATOR_TX) + init" \
+    "$(run "[3,$OPERATOR_TX,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_operator.wasm")"
 echo ""
 
 echo "Deploying cheeky-bricky-game (with init, bet token $BET_TOKEN_BLOCK:$BET_TOKEN_TX)..."
@@ -102,12 +102,13 @@ echo "    KELLY:  0.5% of bank max net win per bet"
 echo "    BLOCK:  20% of bank max net payouts per block (miner defense)"
 echo "    TARGET: 656..64238  (1%..98% win chance)"
 echo ""
-echo "  operator treasury (exit-fee sink):      4:$TREASURY_TX"
-echo "    LP exit fee: 2% of each withdrawal → swept here via SweepFees (op 6)"
+echo "  operator auth key (fee withdrawal):     4:$OPERATOR_TX (minted to you)"
+echo "    LP exit fee: 2% of each withdrawal → the table's fee_accum,"
+echo "    collected by the operator via WithdrawFees (op 6, auth-gated)"
 echo ""
 echo "  Next steps:"
 echo "    ./scripts/deposit.sh 100000000        # seed the bank (mint CBRK shares)"
 echo "    ./scripts/roll.sh 32768 1000000       # bet 0.01 DIESEL on a coin flip"
-echo "    ./scripts/view.sh bank                # bank / shares / fee"
-echo "    ./scripts/sweep-fees.sh               # push accrued 2% exit fees to treasury"
+echo "    ./scripts/view.sh bank                # bank / shares / fee_accum"
+echo "    ./scripts/withdraw-fees.sh            # operator collects the 2% exit fees"
 echo "═══════════════════════════════════════"

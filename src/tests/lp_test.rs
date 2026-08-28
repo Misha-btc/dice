@@ -122,6 +122,7 @@ fn test_withdraw_burns_shares_and_pays_pro_rata() -> Result<()> {
     // separate /fee_accum, still held by the contract.
     assert_eq!(v[0], amount - gross_payout, "bank drained by the gross payout");
     assert_eq!(v[1], total_shares - burn, "supply dropped by the burn");
+    assert_eq!(v[2], fee, "fee_accum holds the 2% exit carve-out");
     test_log!("[LP] withdraw ok: burned {}, gross {}, fee {}, lp {}", burn, gross_payout, fee, lp_payout);
     Ok(())
 }

@@ -170,25 +170,29 @@ over a per-bet protocol fee precisely because it never touches the player-facing
 odds and only charges capital that is *leaving* the house.
 
 Flow (all in the bet token):
-1. `Withdraw` retains 2% of the gross payout in `/fee_accum` (the LP gets 98%).
-   The fee stays in the contract's own balance — no external call on the hot path,
-   so a broken treasury can never block an LP exit.
-2. `SweepFees` (opcode 6, **permissionless**) drains `/fee_accum` into the
-   hardcoded `TREASURY_ID = 4:0x7EA5` via its `Collect` op. The destination is
-   compiled in, so a permissionless caller cannot redirect it. Checks-effects-
-   interactions: `/fee_accum` is zeroed *before* the external call, and alkanes
-   reverts all state on a propagated error, so the fee either fully moves or stays
-   put — never lost. Reverts on a zero balance.
-3. The **treasury** (`cheeky-bricky-treasury`, a standalone contract) holds the
-   fees and lets its **owner** withdraw them (`Withdraw{token, amount}`, opcode 2).
-   Ownership is a single self-unit key minted to the deployer at init (the
-   std-proxy pattern — no external auth factory); the key is spent into the call
-   and returned with the payout. `Collect` (opcode 1) is permissionless so the
-   game's sweep can always land.
+1. `Withdraw` retains 2% of the gross payout in the table's own `/fee_accum` (the
+   LP gets 98%). The fee stays in the contract's own balance — no external call,
+   nothing to strand.
+2. `WithdrawFees` (opcode 6) pays the whole `/fee_accum` to the caller and zeroes
+   it — but ONLY if the caller presents the hardcoded operator auth key
+   (`OPERATOR_AUTH_ID = 4:0x7EA5`). The key is spent-and-returned (never
+   consumed), so one key drains every table the operator runs. Reverts on a
+   missing key or a zero balance.
 
-This mirrors arbuzino's fee→vault bridge in *structure* (accrue, then a
-permissionless sweep to a hardcoded sink) but the sink is the operator's
-collector, not a staker vault.
+**Why per-table, not a shared treasury.** Each table has exactly one bet token, so
+its fee is single-token and stays put until collected — no sink contract holding
+funds, no cross-token registry, no external call / CEI concerns, no "drain
+everything" enumeration. If the operator runs many tables they simply collect from
+each (one auth key works on all). `ViewBank` exposes `/fee_accum` (field 3) so the
+operator can see what's owed per table.
+
+**The auth key** is a minimal standalone contract (`cheeky-bricky-operator`) that
+holds no funds: `Init` mints one self-unit to the deployer, and that unit *is* the
+operator credential (std-proxy pattern — no external auth factory). Whoever holds
+it is the operator; lose it and fee access is gone forever (immutable), but LP and
+player flows never touch it, so a lost key can never freeze the game. It must be
+deployed at the hardcoded slot BEFORE the game (same "deploy your sink first"
+requirement any hardcoded-id design has).
 
 ## Factory (the PERMAFROST pattern)
 
@@ -220,19 +224,17 @@ for them. Guards: the bet token must not be the instance itself, and init
 runs once per instance (`/initialized`, re-init attack tested). Verified
 end-to-end in `factory_test`.
 
-## No privileged capability on the game
+## Privileged capability: only fee collection
 
-The **game** has none — by the owner's final call (2026-08-27). Earlier designs
-had an auth token that could lower a richer launch edge over time; it was
-removed together with the whole dynamic-edge machinery. The game has no owner,
-no admin op, no upgrade path. `SweepFees` is permissionless with a hardcoded
-destination, so it grants no privilege. What is deployed is the entire game,
-forever.
-
-The **treasury** is a separate contract and *does* have one privileged op —
-owner-key `Withdraw`. That privilege is deliberately isolated there: the game
-never depends on it, and the treasury holds only already-earned exit fees. The
-owner key is minted once at deploy; guard it.
+The game has **no admin, no owner, no upgrade path, no edge knob** — an earlier
+dynamic-edge auth token was removed with the whole machinery (2026-08-27). The
+single privileged action is `WithdrawFees`: the operator collecting the 2% exit
+fees a table has *already accrued*, gated by possession of the hardcoded
+`OPERATOR_AUTH_ID` key. It cannot change any parameter, cannot touch the bank or
+LP shares, and cannot block a withdrawal — it only moves already-earned fee out.
+The key is a minimal standalone token minted once at deploy; guard it (a lost key
+strands only future fees, never player or LP funds). What is deployed is the
+entire game, forever.
 
 ## Storage sketch
 
@@ -246,14 +248,14 @@ owner key is minted once at deploy; guard it.
 (min_bet is a compile-time constant 1000, not stored)
 /last_win_height      u128   (per-block budget bookkeeping)
 /paid_this_block      u128   (Σ realized net payouts at last_win_height)
-/fee_accum            u128   (accrued 2% LP-exit fees, bet-token; drained by SweepFees)
+/fee_accum            u128   (accrued 2% LP-exit fees, bet-token; paid out by WithdrawFees)
 /total_bets           u128   (stats)
 /total_wagered        u128   (stats: Σ effective bets)
 /total_won            u128   (stats: Σ payouts)
 
-treasury (separate contract, 4:0x7EA5):
-/initialized          u8     (one-shot; init mints 1 owner-key unit to the deployer)
-  (no other state — the owner key is a self-unit alkane, fees are the held balance)
+operator auth (separate contract, 4:0x7EA5):
+/initialized          u8     (one-shot; init mints 1 key unit to the deployer)
+  (no other state, holds no funds — the key is just a self-unit alkane)
 ```
 
 ## Opcode sketch
@@ -266,21 +268,20 @@ treasury (separate contract, 4:0x7EA5):
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token minus the 2% exit fee (LP gets 98%, fee → `/fee_accum`); slippage floor on the net |
 | 5 | `Donate` | `amount` | grow the bank, no shares |
-| 6 | `SweepFees` | — | permissionless; drain `/fee_accum` → treasury `4:0x7EA5` (hardcoded, CEI, reverts on zero) |
+| 6 | `WithdrawFees` | — | operator-only (attach `OPERATOR_AUTH_ID` key, returned); pays this table's `/fee_accum` to the caller, zeroes it; reverts on a missing key or zero balance |
 | 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Cheeky Bricky" / "CBRK" |
-| 101 | `ViewBank` | — | `(bank, total_shares)` |
+| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum)` — field 3 is the operator's accrued fee |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx)` |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank+edge |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
 
-### treasury (4:0x7EA5)
+### operator auth key (4:0x7EA5)
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `Init` | — | one-time; mints 1 owner-key unit to the deployer |
-| 1 | `Collect` | — | permissionless; accept + hold any incoming (SweepFees lands here) |
-| 2 | `Withdraw` | `token_block, token_tx, amount` | owner-only (attach the 1-unit key, returned with the payout); sends `amount` of the named token to the caller |
+| 0 | `Init` | — | one-time; mints 1 auth-key unit to the deployer |
+| 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky Operator" / "CBOP" (wallet convention) |
 
 ## Miner caveat (accepted, immutable)
 
@@ -318,7 +319,7 @@ alkane forwards a Roll from its own contract context and the call reverts
 2026-08-25:
 1. **No per-bet protocol fee**: the originally-drafted 0.1% → vault 4:777 bridge
    was REMOVED on the owner's call ("зарабатывать будут только LP"). Superseded
-   2026-08-27 by a **2% LP-exit fee to an operator treasury** (see item 8) — the
+   2026-08-27 by a **2% LP-exit fee to the operator** (see item 10) — the
    player-facing edge is still 100% LP; the operator earns only on withdrawals.
 2. **First-depositor mitigation**: OZ-style virtual offset
    (`VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1`) + revert on zero-share
@@ -356,15 +357,19 @@ alkane forwards a Roll from its own contract context and the call reverts
    away.
 
 2026-08-27 (operator revenue):
-10. **2% LP-exit fee → operator treasury** (`EXIT_BPS = 200`; owner chose
-    "operator (treasury)" + "2%" over a per-bet fee). Withdraw keeps 2% of the
-    gross in `/fee_accum` (LP nets 98%); the permissionless `SweepFees` (opcode 6)
-    pushes it to the hardcoded `TREASURY_ID = 4:0x7EA5`. The treasury is a small
-    standalone contract; ownership is a self-unit key (std-proxy pattern), so no
-    external auth factory is needed. Kept the fee off the hot path (accrue + sweep,
-    not a direct call on withdraw) so a broken treasury can never freeze exits.
-    `TREASURY_ID` is hardcoded rather than an init arg — keeps the game's init
-    signature and the whole test suite untouched, and prevents redirection.
+10. **2% LP-exit fee → operator, collected per-table** (`EXIT_BPS = 200`; owner
+    chose "operator" + "2%" over a per-bet fee). Withdraw keeps 2% of the gross in
+    the table's own `/fee_accum` (LP nets 98%); the operator pulls it with
+    `WithdrawFees` (opcode 6), gated by the hardcoded `OPERATOR_AUTH_ID = 4:0x7EA5`
+    key. The FIRST cut of this design used a shared treasury contract that every
+    table swept into (`SweepFees` + a multi-token registry + `WithdrawAll`); the
+    owner then simplified it (2026-08-27) — one table = one token, so per-table
+    collection needs no sink contract, no external call, no registry/cap. The auth
+    key is a minimal standalone token (self-unit = credential, std-proxy pattern).
+    Hardcoded rather than an init arg — keeps the game's init signature and the
+    test suite stable, and there is nothing to redirect (auth is possession, the
+    payout always goes to the caller). Kept off the LP-withdraw path so a lost key
+    can never freeze exits.
 
 ## Permissionless-table footguns (acknowledged, immutable)
 

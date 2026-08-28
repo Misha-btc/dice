@@ -25,17 +25,20 @@ win in the long run" guarantee is the core design goal.
 
 **Operator revenue = a 2% LP-exit fee** (`EXIT_BPS`, in the game runtime). Players
 pay NO house rake — the whole 1% edge still goes to LPs. The operator earns only
-when an LP *withdraws*: 2% of the gross payout is retained in `/fee_accum` (LP gets
-98%) and later swept — permissionlessly — into a **standalone treasury contract**
-(hardcoded `TREASURY_ID = 4:0x7EA5`), whose single owner key (minted at deploy)
-gates withdrawals. This mirrors arbuzino's fee→vault bridge pattern, but the sink
-is an operator collector, not a staker vault.
+when an LP *withdraws*: 2% of the gross payout is retained in the table's own
+`/fee_accum` (LP gets 98%). Each table holds its own fee in its own single bet
+token — no shared treasury, no cross-token registry. The operator collects it
+per-table via `WithdrawFees` (opcode 6), gated by a **hardcoded auth key**
+(`OPERATOR_AUTH_ID = 4:0x7EA5`, a minimal standalone token minted to the deployer);
+one key drains every table the operator runs. No external call on the path, so
+nothing can strand the fee.
 
 **Immutable by design** (same philosophy as sister project
 [arbuzino/Fireball](../arbuzino)): no proxy, no upgrade path, no admin *on the
-game*. Every constant is compiled in. The treasury is a separate contract with an
-owner key; a broken/absent treasury can only fail `SweepFees`, never block an LP
-withdrawal (which never touches it).
+game*. Every constant is compiled in. The only privileged action is the operator
+collecting fees they already earned, gated by possession of the auth key — losing
+the key means losing fee access (immutable), but LP and player flows never touch
+it.
 
 Read `docs/SPEC.md` for the full design (including the Kelly derivation and the
 miner-withholding analysis).
@@ -65,7 +68,7 @@ cheeky-bricky/
 ├── alkanes/
 │   ├── cheeky-bricky-game/                # thin declare_alkane! wrapper → cheeky_bricky_game.wasm
 │   ├── cheeky-bricky-game-runtime/        # all logic (trait CheekyBrickyBase)
-│   ├── cheeky-bricky-treasury/            # operator fee sink (owner-key gated) → cheeky_bricky_treasury.wasm
+│   ├── cheeky-bricky-operator/            # fee-withdrawal auth key (mints 1 key at init) → cheeky_bricky_operator.wasm
 │   └── cheeky-bricky-attacker/            # TEST-ONLY fixture: wraps a Roll (flash-attack test)
 ├── crates/
 │   └── cheeky-bricky-math/                # pure math: roll, payout, Kelly, share pricing
@@ -77,8 +80,8 @@ cheeky-bricky/
 │   ├── flash_attack_test.rs         # Roll rejects contract callers (cheeky-bricky-attacker fixture)
 │   ├── fuel_audit_test.rs           # every opcode ≤ 3.5M fuel floor (CreateTable is the heavy one)
 │   ├── scenario_test.rs             # same-block budget, full withdraw + revive
-│   ├── exit_fee_test.rs             # 2% exit fee → SweepFees → treasury owner withdraw
-│   └── wasm/                        # vendored cheeky_bricky_game.wasm (+ treasury, attacker)
+│   ├── exit_fee_test.rs             # 2% exit fee → auth-gated WithdrawFees by the operator
+│   └── wasm/                        # vendored cheeky_bricky_game.wasm (+ operator, attacker)
 ├── docs/SPEC.md                     # the design document — read this first
 └── scripts/                         # regtest CLI helpers (source scripts/_env.sh)
 ```
@@ -99,8 +102,8 @@ VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share r
 Plus one constant in `cheeky-bricky-game-runtime` (not math):
 
 ```rust
-EXIT_BPS  = 200          // 2% of each LP withdrawal → operator treasury (LP gets 98%)
-TREASURY_ID = 4:0x7EA5   // hardcoded exit-fee sink (a permissionless caller can't redirect)
+EXIT_BPS  = 200            // 2% of each LP withdrawal → the table's /fee_accum (LP gets 98%)
+OPERATOR_AUTH_ID = 4:0x7EA5 // hardcoded auth key; WithdrawFees requires it (one key, all tables)
 ```
 
 Oversized bets are **clamped down** to fit the caps (excess returned as change,
@@ -120,24 +123,24 @@ enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-rui
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; **2% exit fee retained in /fee_accum, LP gets 98%**; slippage floor applies to the NET (0=off) |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
-| 6 | `SweepFees` | — | permissionless; sweep the whole `/fee_accum` into the hardcoded treasury (`4:0x7EA5`) via its Collect op. Fixed destination, reverts on zero, CEI (zero-before-call) so the fee never strands |
+| 6 | `WithdrawFees` | — | **operator-only** (attach the `OPERATOR_AUTH_ID` key, spent-and-returned); pays this table's whole `/fee_accum` (bet token) to the caller and zeroes it. Reverts on a missing key or zero balance. No external call |
 | 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky" / "CBRK" — **wallet convention, load-bearing** |
-| 101 | `ViewBank` | — | `(bank, total_shares)` |
+| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum)` |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx)` |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
 
-### cheeky-bricky-treasury (4:0x7EA5) — operator fee sink
+### cheeky-bricky-operator (4:0x7EA5) — fee-withdrawal auth key
 
-Standalone. Ownership = one self-unit key minted to the deployer at init (the
-std-proxy pattern; no external auth factory).
+Standalone, holds NO funds. It's just the key: `Init` mints one self-unit to the
+deployer, and the game's `WithdrawFees` requires possession of it. Implements the
+99/100 wallet convention so the key displays cleanly.
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `Init` | — | one-time; mints 1 owner-key unit to the deploy output |
-| 1 | `Collect` | — | permissionless; accept + HOLD any incoming (the game's `SweepFees` lands here) |
-| 2 | `Withdraw` | `token_block, token_tx, amount` | **owner-only** (1 key unit in, returned with the payout); sends `amount` of the named token to the caller; can't withdraw the key as a token |
+| 0 | `Init` | — | one-time; mints 1 auth-key unit to the deploy output |
+| 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky Operator" / "CBOP" |
 
 ## Storage Layout
 
@@ -152,7 +155,7 @@ std-proxy pattern; no external auth factory).
 /total_shares      u128  (CBRK supply)
 /last_win_height   u128  (per-block budget bookkeeping)
 /paid_this_block   u128  (Σ realized net payouts at last_win_height)
-/fee_accum         u128  (accrued 2% LP-exit fees, bet-token; drained by SweepFees)
+/fee_accum         u128  (accrued 2% LP-exit fees, bet-token; paid out by WithdrawFees)
 /total_bets, /total_wagered, /total_won   u128  (stats)
 ```
 
@@ -188,14 +191,13 @@ std-proxy pattern; no external auth factory).
 - **Roll is top-level-only**: `context.caller == {0,0}` or revert — the
   flash/atomic-revert guard. Wrapper alkanes can't filter losses.
 - **One-shot init** (`/initialized`), **bet token ≠ self**, **one table per
-  token** (registry), **no privileged op on the game** (SweepFees is
-  permissionless, its destination hardcoded), **rounding favors the bank**,
-  **Kelly + block caps** bound every payout.
-- **Exit-fee safety**: `SweepFees` is CEI (zero `/fee_accum` before the external
-  Collect call → alkanes reverts state on a propagated error, so the fee never
-  strands); LP `Withdraw` never calls the treasury, so a broken treasury can't
-  block an exit. The treasury's own privilege (owner-key withdraw) is isolated in
-  a separate contract.
+  token** (registry), **the only privileged op is `WithdrawFees`** (auth-gated,
+  and it only ever pays out fees the operator already earned), **rounding favors
+  the bank**, **Kelly + block caps** bound every payout.
+- **Exit-fee safety**: the fee accrues in the table's own `/fee_accum` and
+  `WithdrawFees` pays it from the balance the game already holds — no external
+  call, nothing to strand. LP `Withdraw` never touches the auth path, so the
+  operator (or a lost key) can never block or freeze an LP exit.
 
 ## Test Coverage
 
@@ -204,11 +206,11 @@ std-proxy pattern; no external auth factory).
   + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
   1000-consecutive-wins survival, share pricing (virtual offset, round-trip,
   solvency fuzz, inflation-attack unprofitability), mul_div 256-bit.
-- **Integration (21, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+- **Integration (22, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
-  98% with the 2% fee held in /fee_accum** (`lp_test`);
-  end-to-end exit fee — accrue on withdraw → permissionless `SweepFees` to the
-  treasury → owner-key withdraw (and a keyless withdraw attempt reverts)
+  98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)
+  (`lp_test`); exit fee — accrue on withdraw → operator collects via auth-gated
+  `WithdrawFees` (keyless attempt reverts; empty-fee reverts and refunds the key)
   (`exit_fee_test`);
   forced win/lose settlement, `amount=0` bets-everything sentinel,
   oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust
@@ -219,8 +221,8 @@ std-proxy pattern; no external auth factory).
 
 Shares the change-return contract patterns, the test harness, and the deploy
 conventions — but is a **standalone repo** with no runtime link to arbuzino
-(no fee bridge to vault 4:777). Its own fee model echoes arbuzino's structure —
-accrue a fee, then a permissionless sweep to a hardcoded sink — but here the sink
-is the operator's own treasury (owner-key gated), not a staker vault: **LPs earn
-the edge, the operator earns the 2% LP-exit fee.** Bet currency differs too:
-2:490 on mainnet vs Fireball's DIESEL.
+(no fee bridge to vault 4:777). The fee model is deliberately simpler than
+arbuzino's accrue-then-sweep bridge: each table keeps its own single-token fee and
+the operator pulls it directly with an auth key — no sink contract holding funds,
+no external call. **LPs earn the edge, the operator earns the 2% LP-exit fee.**
+Bet currency differs too: 2:490 on mainnet vs Fireball's DIESEL.

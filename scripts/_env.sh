@@ -4,10 +4,11 @@
 
 GAME_BLOCK=4
 GAME_TX=205                # 0xCD
-# Operator treasury — the game's hardcoded exit-fee sink (TREASURY_ID = 4:0x7EA5).
-# Must match the runtime constant; deploy it BEFORE the game.
-TREASURY_BLOCK=4
-TREASURY_TX=32421          # 0x7EA5
+# Operator auth key — the game's hardcoded WithdrawFees gate (OPERATOR_AUTH_ID
+# = 4:0x7EA5). Must match the runtime constant; deploy it BEFORE the game. The
+# deployer receives the single key unit.
+OPERATOR_BLOCK=4
+OPERATOR_TX=32421          # 0x7EA5
 # Bet/bank currency (immutable init param of the game). Regtest defaults to
 # DIESEL 2:0 (the only free-mintable token there); MAINNET uses 2:490 —
 # override with BET_TOKEN_BLOCK/BET_TOKEN_TX.

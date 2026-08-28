@@ -5,7 +5,7 @@
 # varint parsing (single-byte length reads corrupt responses ≥ 128 bytes).
 #
 # Usage:
-#   ./scripts/view.sh bank              # (bank, total_shares)
+#   ./scripts/view.sh bank              # (bank, total_shares, fee_accum)
 #   ./scripts/view.sh stats             # (total_bets, total_wagered, total_won)
 #   ./scripts/view.sh config            # (min_bet, edge, kelly, t_min, t_max, token)
 #   ./scripts/view.sh max-bet <target>  # (max_bet, max_net_profit) at current bank
@@ -136,7 +136,7 @@ def u128_le(b):
     return int.from_bytes(b[:16], "little")
 
 LABELS = {
-    "bank":    ["bank", "total_shares"],
+    "bank":    ["bank", "total_shares", "fee_accum"],
     "stats":   ["total_bets", "total_wagered", "total_won"],
     "config":  ["min_bet", "edge_bps", "t_min", "t_max", "token_block", "token_tx"],
     "max-bet": ["max_bet", "max_net_profit"],

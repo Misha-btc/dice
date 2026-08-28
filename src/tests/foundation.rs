@@ -8,15 +8,15 @@ use crate::tests::helpers::{
     create_deployment_block, get_sheet_by_outpoint, index_block,
     init_with_multiple_cellpacks_with_tx, AlkaneId, Cellpack, OutPoint, Result, DIESEL_ID,
 };
-use crate::tests::vendor::{get_cheeky_bricky_game_wasm_bytes, get_treasury_wasm_bytes};
+use crate::tests::vendor::{get_cheeky_bricky_game_wasm_bytes, get_operator_wasm_bytes};
 use crate::test_log;
 
 /// Tx slot for the game singleton. Result lives at {4, GAME_TX}.
 pub const GAME_TX: u128 = 0xCD;
 
-/// Tx slot for the operator treasury — MUST match the runtime's hardcoded
-/// TREASURY_ID (4:0x7EA5). The game sweeps exit fees here.
-pub const TREASURY_TX: u128 = 0x7EA5;
+/// Tx slot for the operator auth key — MUST match the runtime's hardcoded
+/// OPERATOR_AUTH_ID (4:0x7EA5). WithdrawFees requires this key.
+pub const OPERATOR_TX: u128 = 0x7EA5;
 
 /// The contract's hardcoded minimum bet (re-exported for tests). Bets below
 /// this revert.
@@ -78,17 +78,17 @@ pub fn deploy_cheeky_bricky() -> Result<CheekyBrickyDeployment> {
     })
 }
 
-/// Deploy the operator treasury at 4:0x7EA5 (= the runtime's TREASURY_ID).
-/// Init (opcode 0) mints one owner-key unit (units of the treasury) to the
-/// deploy tx's vout 0. Returns (treasury id, owner-key outpoint, next height).
-pub fn deploy_treasury(height: u32) -> Result<(AlkaneId, OutPoint, u32)> {
+/// Deploy the operator auth key at 4:0x7EA5 (= the runtime's OPERATOR_AUTH_ID).
+/// Init (opcode 0) mints one key unit (units of itself) to the deploy tx's
+/// vout 0. Returns (operator auth id, key outpoint, next height).
+pub fn deploy_operator(height: u32) -> Result<(AlkaneId, OutPoint, u32)> {
     let block = create_deployment_block(
         height,
-        get_treasury_wasm_bytes(),
-        Cellpack { target: AlkaneId { block: 3, tx: TREASURY_TX }, inputs: vec![0] },
+        get_operator_wasm_bytes(),
+        Cellpack { target: AlkaneId { block: 3, tx: OPERATOR_TX }, inputs: vec![0] },
     );
     index_block(&block, height)?;
-    let treasury = AlkaneId { block: 4, tx: TREASURY_TX };
-    let owner_key = OutPoint { txid: block.txdata[1].compute_txid(), vout: 0 };
-    Ok((treasury, owner_key, height + 1))
+    let operator = AlkaneId { block: 4, tx: OPERATOR_TX };
+    let key = OutPoint { txid: block.txdata[1].compute_txid(), vout: 0 };
+    Ok((operator, key, height + 1))
 }

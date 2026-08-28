@@ -12,7 +12,7 @@ pub fn get_attacker_wasm_bytes() -> &'static [u8] {
     include_bytes!("./wasm/cheeky_bricky_attacker.wasm")
 }
 
-/// cheeky-bricky-treasury — the operator fee collector the game sweeps into.
-pub fn get_treasury_wasm_bytes() -> &'static [u8] {
-    include_bytes!("./wasm/cheeky_bricky_treasury.wasm")
+/// cheeky-bricky-operator — the operator auth key required by WithdrawFees.
+pub fn get_operator_wasm_bytes() -> &'static [u8] {
+    include_bytes!("./wasm/cheeky_bricky_operator.wasm")
 }

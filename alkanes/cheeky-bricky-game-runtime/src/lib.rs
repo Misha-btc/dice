@@ -56,16 +56,15 @@ pub const MIN_BET: u128 = 1_000;
 
 /// LP-exit fee: 2% of a withdrawal is kept for the operator (players never pay
 /// a house rake — the whole 1% edge still goes to LPs; only LPs pay this, once,
-/// on the way out). Accrued in the table's bet token and swept to the treasury.
+/// on the way out). Each table accrues its own fee in its own bet token
+/// (`/fee_accum`); the operator collects it per-table via `WithdrawFees`.
 pub const EXIT_BPS: u128 = 200;
 
-/// The operator's fee collector (hardcoded — like arbuzino's vault sink — so a
-/// permissionless caller can't redirect the sweep). Deploy the treasury at this
-/// slot BEFORE the game template.
-pub const TREASURY_ID: AlkaneId = AlkaneId { block: 4, tx: 0x7EA5 };
-
-/// The treasury's Collect opcode (accepts + holds any incoming).
-const TREASURY_COLLECT_OP: u128 = 1;
+/// The operator auth key (hardcoded, shared by the template and every clone).
+/// `WithdrawFees` releases a table's `/fee_accum` only to a caller who presents
+/// this key. Whoever holds it is the operator; deploy the operator contract at
+/// this slot BEFORE the game so the id resolves.
+pub const OPERATOR_AUTH_ID: AlkaneId = AlkaneId { block: 4, tx: 0x7EA5 };
 
 
 // ---------- Storage helpers (mirror fireball-game-runtime) ----------
@@ -640,30 +639,39 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         Ok(response)
     }
 
-    // ---- SweepFees ----
+    // ---- WithdrawFees ----
 
-    /// Permissionless: sweep this table's accrued exit fees (the 2% carve-out,
-    /// in the bet token) to the hardcoded treasury. Anyone may trigger it, but
-    /// the destination is fixed, so the fee can only ever reach the operator's
-    /// collector. Checks-effects-interactions: the accumulator is zeroed BEFORE
-    /// the external call, and alkanes reverts all state on a propagated error,
-    /// so the fee either fully moves or stays put. A broken treasury can only
-    /// fail the sweep — it never blocks LP withdrawals (which never call it).
-    fn sweep_fees(&self) -> Result<CallResponse> {
+    /// Operator-only: pay out this table's accrued exit fees (`/fee_accum`, in
+    /// the bet token) to the caller and zero the accumulator. Auth is the
+    /// hardcoded `OPERATOR_AUTH_ID` key, which must be present in the incoming
+    /// set — it is spent-and-returned (never consumed), so one key drains every
+    /// table the operator runs. No external call, so nothing can strand the fee;
+    /// the fee simply comes out of the balance the game already holds from the
+    /// carve-out. Reverts on a zero balance or a missing key. Any other incoming
+    /// (including the key) is handed straight back.
+    fn withdraw_fees(&self) -> Result<CallResponse> {
+        let context = self.context()?;
+        let auth: u128 = context
+            .incoming_alkanes
+            .0
+            .iter()
+            .filter(|t| t.id == OPERATOR_AUTH_ID)
+            .map(|t| t.value)
+            .sum();
+        if auth < 1 {
+            return Err(anyhow!("not operator: attach the operator auth key"));
+        }
         let token = bet_token()?;
         let fee = read_u128(ptr("/fee_accum"));
         if fee == 0 {
-            return Err(anyhow!("no accrued fees to sweep"));
+            return Err(anyhow!("no accrued fees to withdraw"));
         }
         write_u128(ptr("/fee_accum"), 0);
-        let parcel = AlkaneTransferParcel(vec![AlkaneTransfer { id: token, value: fee }]);
-        self.call(
-            &Cellpack { target: TREASURY_ID, inputs: vec![TREASURY_COLLECT_OP] },
-            &parcel,
-            self.fuel(),
-        )?;
-        let context = self.context()?;
-        Ok(CallResponse::forward(&context.incoming_alkanes))
+        // Return everything sent (the auth key, any riding tokens) untouched,
+        // then add the fee payout on top.
+        let mut response = CallResponse::forward(&context.incoming_alkanes);
+        response.alkanes.0.push(AlkaneTransfer { id: token, value: fee });
+        Ok(response)
     }
 
     // ---- Donate ----
@@ -730,14 +738,16 @@ pub trait CheekyBrickyBase: AlkaneResponder {
 
     // ---- Views ----
 
-    /// `(bank, total_shares)` as 2×u128 LE (32 bytes). Share price is
-    /// `(bank + 1) / (total_shares + 10^6)` (virtual offset).
+    /// `(bank, total_shares, fee_accum)` as 3×u128 LE (48 bytes). Share price
+    /// is `(bank + 1) / (total_shares + 10^6)` (virtual offset). `fee_accum` is
+    /// the operator's accrued 2% exit fee awaiting `WithdrawFees`.
     fn view_bank(&self) -> Result<CallResponse> {
         let context = self.context()?;
         let mut response = CallResponse::forward(&context.incoming_alkanes);
-        let mut out = Vec::with_capacity(32);
+        let mut out = Vec::with_capacity(48);
         out.extend_from_slice(&read_u128(ptr("/bank")).to_le_bytes());
         out.extend_from_slice(&read_u128(ptr("/total_shares")).to_le_bytes());
+        out.extend_from_slice(&read_u128(ptr("/fee_accum")).to_le_bytes());
         response.data = out;
         Ok(response)
     }

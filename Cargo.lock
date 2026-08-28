@@ -649,6 +649,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheeky-bricky-operator"
+version = "0.1.0"
+dependencies = [
+ "alkanes-runtime",
+ "alkanes-support",
+ "anyhow",
+ "metashrew-support",
+]
+
+[[package]]
 name = "cheeky-bricky-tests"
 version = "0.1.0"
 dependencies = [
@@ -663,16 +673,6 @@ dependencies = [
  "ordinals 1.2.3",
  "protorune",
  "protorune-support",
-]
-
-[[package]]
-name = "cheeky-bricky-treasury"
-version = "0.1.0"
-dependencies = [
- "alkanes-runtime",
- "alkanes-support",
- "anyhow",
- "metashrew-support",
 ]
 
 [[package]]
