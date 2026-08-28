@@ -18,10 +18,11 @@ liabilities — ever.
 
 The bankroll is **LP-owned**: deposits mint fungible CBRK shares (units of the game
 alkane itself) at the current `bank/total_shares` price; withdrawals burn them
-pro-rata, anytime. The **half-Kelly cap** (max player net profit = 0.5% of bank,
-per bet AND per block aggregate, independent of chosen odds) makes the bank
-mathematically unruinable and gives LPs a positive long-run log-drift — the "LPs
-win in the long run" guarantee is the core design goal.
+pro-rata, anytime. The **full-Kelly cap** (max player net profit = 1% of bank per
+bet — the growth-optimal fraction, independent of chosen odds — plus ≤20% of bank
+in realized net wins per block) makes the bank mathematically unruinable and gives
+LPs a positive long-run log-drift — the "LPs win in the long run" guarantee is the
+core design goal.
 
 **Operator revenue = a mutable LP-exit fee, capped at 2%.** Players pay NO house
 rake — the whole 1% edge still goes to LPs. The operator earns only when an LP
@@ -94,13 +95,13 @@ cheeky-bricky/
 ```rust
 EDGE_BPS  = 100          // 1%, FIXED FOREVER — ALL of it accrues to LPs (no house
                          // rake on play; the ONLY operator cut is the exit fee below)
-// per-bet cap = edge/2 of bank (half-Kelly): 0.5%
+// per-bet cap = edge · bank (full Kelly): 1% — growth-optimal, no-ruin; 1% is the max, not a knob
 BLOCK_BUDGET_BPS = 2000  // Σ realized net payouts per block ≤ 20% of bank (miner defense)
 MIN_WIN_MULT_BPS = 10_100 // win must pay ≥ ×1.01 → t_max = 64_238 (≈98% chance,
                           // the classic dice-slider ceiling)
 T_MIN     = 1            // win chance 1/65536 ≈ 0.0015%; MAX multiplier ≈ ×64880
                          // (SatoshiDice-style "lessthan 1" ceiling). Safe because the
-                         // half-Kelly cap auto-shrinks the stake at extreme multipliers —
+                         // full-Kelly cap auto-shrinks the stake at extreme multipliers —
                          // extreme targets just floor to a dust/0 max bet on a small bank
                          // (clamped < MIN_BET → clean revert). Only target 0 is rejected.
 VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share revert)

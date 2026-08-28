@@ -391,7 +391,7 @@
   function pct1(n) { return (n / SPACE * 100).toFixed(1); }
   function payoutTotal(a, t) { return Math.floor(a * PN / (BPS * t)); }
   function maxBet(t) {
-    var cap = Math.floor(bank() * EDGE / (2 * BPS));
+    var cap = Math.floor(bank() * EDGE / BPS); // full Kelly: 1% of bank at 1% edge
     return Math.floor(cap * BPS * t / (PN - BPS * t));
   }
   function betUnits() {

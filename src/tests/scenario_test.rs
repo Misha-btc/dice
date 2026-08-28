@@ -87,9 +87,8 @@ fn setup_bank(bank: u128) -> Result<(OutPoint, u128, u32)> {
 }
 
 /// Two forced wins in the SAME block: the second is bounded by the remaining
-/// per-block budget. With max-size bets a single win already consumes ~half
-/// the block budget (block=20% of bank, per-bet cap=0.5%... at the launch
-/// edge the block budget is 40 max-wins deep), so two ordinary wins fit
+/// per-block budget (block=20% of bank, per-bet cap=1% full Kelly at the launch
+/// edge → the block budget is 20 max-wins deep), so two ordinary wins fit
 /// comfortably — this proves the budget accounting tracks realized wins
 /// across bets in one height without bricking the second.
 #[test]

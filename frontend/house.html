@@ -311,7 +311,7 @@
 
   <div class="why">
     <h2>Why the bank can't die</h2>
-    <p><b>Capped losses.</b> No single win can take more than 0.5% of the bank, and no single block more than 20% — enforced by the contract, whatever players do.</p>
+    <p><b>Capped losses.</b> No single win can take more than 1% of the bank, and no single block more than 20% — enforced by the contract, whatever players do.</p>
     <p><b>Positive drift.</b> Every bet carries a 1% edge and all of it lands in the bank. The bank can dip, but its long-run growth is a theorem, not a promise.</p>
     <p><b>No locks, no admin.</b> Shares mint and burn at the live bank price, anytime. Nobody can change the edge, pause withdrawals, or touch the bank.</p>
   </div>
@@ -462,7 +462,7 @@
   function tick() {
     var t = T();
     var tg = TARGETS[Math.floor(Math.random() * TARGETS.length)];
-    var cap = Math.floor(t.bank * EDGE / (2 * BPS));
+    var cap = Math.floor(t.bank * EDGE / BPS); // full Kelly: 1% of bank at 1% edge
     var mb = Math.floor(cap * BPS * tg / (PN - BPS * tg));
     var bet = Math.max(Math.floor(Math.random() * mb * 0.4), Math.floor(t.bank * 0.0001));
     var win = Math.floor(Math.random() * SPACE) < tg;

@@ -12,10 +12,10 @@
 //! sink**: the whole 1% edge (a compile-time constant — no admin, no auth
 //! token, no knob of any kind) accrues to the bank — only LPs earn.
 //!
-//! ## Solvency: half-Kelly per bet, 20% budget per block, clamp not revert
+//! ## Solvency: full-Kelly per bet, 20% budget per block, clamp not revert
 //!
-//! A bet's net exposure may not exceed `edge/2 · bank` (half-Kelly — the LP
-//! growth guarantee), and a block's aggregate realized net payout may not
+//! A bet's net exposure may not exceed `edge · bank` (full Kelly — the growth-
+//! optimal LP fraction), and a block's aggregate realized net payout may not
 //! exceed `20% · bank` (miner block-stuffing defense). A bet that would
 //! exceed what remains is **clamped down** to fit (excess returned as
 //! change) rather than reverted — the caller can set `min_amount` to revert
@@ -348,7 +348,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
     /// (LP yield — no fee is skimmed).
     ///
     /// **Clamp, don't revert**: if the bet's net exposure exceeds what the
-    /// caps allow right now (per-bet half-Kelly, or what's left of this
+    /// caps allow right now (per-bet full-Kelly, or what's left of this
     /// block's 20% budget), the bet is resized DOWN to fit and the excess
     /// returned as change — the roll always happens. `min_amount` is the
     /// caller's floor: if the clamped size falls below it, revert instead
@@ -401,7 +401,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         }
 
         // What the caps allow right now: the smaller of the per-bet
-        // half-Kelly cap and this block's remaining 20% budget (the budget
+        // full-Kelly cap and this block's remaining 20% budget (the budget
         // counts REALIZED payouts — losing bets don't consume it, so the
         // maximum a block's wins can extract stays bounded, which is exactly
         // what bounds a block-stuffing, block-withholding miner).
@@ -461,7 +461,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         write_u128(wag_key.clone(), read_u128(wag_key).saturating_add(effective));
 
         if win {
-            // bank + effective ≥ payout because exposure ≤ cap ≤ bank·edge/2.
+            // bank + effective ≥ payout because exposure ≤ cap = bank·edge (≤ bank).
             let new_bank = bank
                 .checked_add(effective)
                 .ok_or_else(|| anyhow!("bank overflow"))?

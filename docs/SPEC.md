@@ -69,7 +69,7 @@ Runtime support confirmed: `alkanes-runtime` exposes `block_header()` and
     the stake by ≥ ×1.01 (`MIN_WIN_MULT_BPS = 10_100`) — at the 1% edge that is
     **64 238 (≈98% chance, ×1.0100)**. Opening the longshot end costs the bank
     nothing: the Kelly cap (below) auto-shrinks the stake so `net_exposure` never
-    exceeds 0.5% of the bank at ANY multiplier; extreme targets simply floor to a
+    exceeds 1% of the bank at ANY multiplier; extreme targets simply floor to a
     dust (or 0) max bet until the bank is large enough, and a clamped bet below
     `MIN_BET` reverts cleanly.
 - **Lose**: the bet joins `/bank`. **Win**: `m·bet` paid from `/bank` to the
@@ -89,13 +89,18 @@ never a skim on play.
 Maximize the bankroll's expected log-growth over bet size
 (`g(x) = (1−p)·ln(1+x) + p·ln(1−x(m−1))`, x = bet/B): the optimum lands at
 **max player net profit = edge · B, independent of the chosen odds** — one
-number covers every multiplier. We run **half-Kelly** for a smoother path
-(~75% of optimal growth at half the variance):
+number covers every multiplier. We run **full Kelly** — the growth-OPTIMAL
+fraction (max drift, higher variance / deeper drawdowns than half-Kelly, still
+no-ruin):
 
 ```
-cap        = B · edge_bps / (2 · 10_000)     // 0.5% of B at the 1% edge
+cap        = B · edge_bps / 10_000           // 1% of B at the 1% edge (full Kelly)
 max_bet(T) = cap / (m − 1)
 ```
+
+Full Kelly is the ceiling of sane bankroll sizing: betting *above* `edge · B`
+is overbetting — variance overtakes drift and long-run growth turns negative.
+So 1% is the max, not a knob to push further.
 
 What this buys, stated honestly:
 
@@ -107,21 +112,21 @@ What this buys, stated honestly:
 - What is NOT guaranteed: the *rate*. Drawdowns happen; LP yield = edge ×
   betting volume, so low traffic = low APY. Don't market it as riskless.
 
-Worked example, bank = $2000 (cap = $10):
-×1.98 coinflip → max bet ≈ $10.2; ×9.9 → ≈ $1.12; ×98.9 longshot → ≈ $0.10;
-the ×64880 extreme → max bet ≈ $0.00015 (dust — playable only once the bank is
-much larger); the ×1.01 grind end (98% chance) allows ≈ $1000 (the bank only
+Worked example, bank = $2000 (cap = $20 at full Kelly):
+×1.98 coinflip → max bet ≈ $20.4; ×9.9 → ≈ $2.25; ×98.9 longshot → ≈ $0.20;
+the ×64880 extreme → max bet ≈ $0.0003 (dust — playable only once the bank is
+much larger); the ×1.01 grind end (98% chance) allows ≈ $2000 (the bank only
 risks the thin margin) — the high-probability slider end is the volume machine.
 
 ### Clamp, don't revert (+ the per-block budget)
 
-Two caps bound a bet's net exposure: the per-bet half-Kelly cap above, and
+Two caps bound a bet's net exposure: the per-bet full-Kelly cap above, and
 the **per-block budget** — aggregate *realized* net payouts per block ≤
 `B · 20%` (`BLOCK_BUDGET_BPS = 2000`; losing bets consume nothing). The
 budget is the miner defense: a miner stuffing their own block and withholding
 on a bad hash extracts at most 20% of B per forfeited block reward — hard and
 expensive to ever collect, hence the generous size. It is deliberately much
-looser than the per-bet cap (40 max wins deep; ruin-impossibility
+looser than the per-bet cap (20 max wins deep at full Kelly; ruin-impossibility
 only needs per-block loss < 100%; growth-optimality is about the typical
 case, and a many-max-winners block is a tail event).
 
@@ -357,7 +362,7 @@ alkane forwards a Roll from its own contract context and the call reverts
    guarantee LP value decay.
 6. **Per-block budget 20%** (`BLOCK_BUDGET_BPS = 2000`; owner's call — very
    hard and expensive to ever extract), decoupled from the per-bet
-   half-Kelly cap — a money budget of realized net wins, NOT a winner
+   Kelly cap — a money budget of realized net wins, NOT a winner
    count; dozens of ordinary wins fit.
 7. **Clamp, don't revert**: oversized bets resize down to fit the caps
    (change returned, roll always happens); optional `min_amount` makes it
@@ -396,7 +401,19 @@ alkane forwards a Roll from its own contract context and the call reverts
     2% to exit" guarantee. Exposed: live fee in `ViewBank` field 4, the immutable
     ceiling in `ViewConfig` field 7.
 
-## Permissionless-table footguns (acknowledged, immutable)
+2026-08-28 (odds range + bankroll sizing):
+12. **T_MIN 656 → 1** (owner's call): the longshot end now reaches the
+    SatoshiDice-style **×64880** max multiplier (win chance `1/65536`); only
+    `target = 0` is rejected. No new bank risk — the Kelly cap auto-shrinks the
+    stake to dust/0 at extreme multipliers (a clamped bet below `MIN_BET` reverts
+    cleanly), so the extreme is playable only once the bank is large enough.
+13. **Half-Kelly → full Kelly** (owner's call): `max_net_profit` moved from
+    `edge/2 · B` (0.5%) to `edge · B` (1%) — the growth-OPTIMAL fraction. Faster
+    drift, higher variance / deeper drawdowns, still structurally no-ruin. This is
+    the ceiling: `edge · B` is the Kelly optimum, and betting above it (toward the
+    ~2×edge zero-drift boundary) would turn long-run growth negative — so 1% is a
+    max, not a knob to push. Doubles every max-bet limit; the 20% block budget is
+    now 20 max-wins deep (was 40).
 
 `CreateTable` is permissionless and one-per-token-forever, so a few economic
 sharp edges are worth accepting on record BEFORE deploy (none are protocol

@@ -23,9 +23,11 @@
 //!
 //! Maximizing the bankroll's expected log-growth over the bet size lands at
 //! **max player net profit = edge · bank, independent of the chosen odds** —
-//! one number covers every multiplier. We run **half-Kelly**
-//! (`cap = edge/2 · bank`): ~75% of the optimal growth rate at half the
-//! variance. Consequences, proven in the tests below:
+//! one number covers every multiplier. We run **full Kelly**
+//! (`cap = edge · bank`): the growth-OPTIMAL fraction — maximum drift, at the
+//! cost of higher variance (deeper drawdowns) than half-Kelly. Still no-ruin;
+//! betting above it would be overbetting. Consequences, proven in the tests
+//! below:
 //!   * per-bet loss ≤ cap → the bank shrinks only multiplicatively, **never
 //!     to zero** (an immutable contract that cannot brick);
 //!   * expected log-growth is positive → the bank grows almost surely as
@@ -73,7 +75,7 @@ pub const EDGE_BPS: u128 = 100;
 
 /// Aggregate realized net payouts per block ≤ `bank · BLOCK_BUDGET_BPS/BPS`
 /// (20%). Miner block-stuffing defense; deliberately MUCH looser than the
-/// per-bet Kelly cap (40 max wins deep) so honest
+/// per-bet Kelly cap (20 max wins deep at full Kelly) so honest
 /// multi-winner blocks essentially never hit it — extracting it requires
 /// withholding a found block, i.e. forfeiting the whole block reward.
 pub const BLOCK_BUDGET_BPS: u128 = 2_000;
@@ -86,7 +88,7 @@ pub const MIN_WIN_MULT_BPS: u128 = 10_100;
 /// Tightest allowed target: `1` — win chance `1/65536 ≈ 0.0015%`, the maximum
 /// multiplier `≈ ×64880` at the 1% edge (the SatoshiDice-style "lessthan 1"
 /// longshot ceiling). The bank is NOT exposed by opening this end: the per-bet
-/// half-Kelly cap auto-shrinks the stake so `net_exposure ≤ 0.5%` of the bank
+/// full-Kelly cap auto-shrinks the stake so `net_exposure ≤ 1%` of the bank
 /// at ANY multiplier. Extreme targets are simply unplayable until the bank is
 /// large enough — the clamped stake would fall below `MIN_BET`, which reverts
 /// cleanly (see the game's `roll`). Only `target = 0` (zero win chance) is
@@ -172,10 +174,15 @@ pub fn net_exposure(amount: u128, target: u128, edge_bps: u128) -> u128 {
     payout_total(amount, target, edge_bps).saturating_sub(amount)
 }
 
-/// The half-Kelly per-bet cap: max allowed net player profit =
-/// `floor(bank · edge / (2 · BPS))`.
+/// The full-Kelly per-bet cap: max allowed net player profit =
+/// `floor(bank · edge / BPS)` = `edge · bank` (1% of the bank at the 1% edge).
+/// This is the growth-OPTIMAL fraction — the exact Kelly bet that maximizes the
+/// bank's expected log-growth. It is still structurally no-ruin (each loss is a
+/// bounded fraction of the bank), just higher-variance than half-Kelly. Betting
+/// ABOVE this would be overbetting (variance eats the drift → risk of decline),
+/// so `edge · bank` is the sane ceiling, not a tunable to exceed.
 pub fn max_net_profit(bank: u128, edge_bps: u128) -> u128 {
-    mul_div(bank, edge_bps, 2 * BPS)
+    mul_div(bank, edge_bps, BPS)
 }
 
 /// The per-block aggregate budget: `floor(bank · BLOCK_BUDGET_BPS / BPS)`.
@@ -419,11 +426,11 @@ mod tests {
     // ── Kelly cap & clamp ───────────────────────────────────────────────────
 
     #[test]
-    fn kelly_cap_is_half_the_edge() {
-        // 0.5% of bank at the 1% edge.
-        assert_eq!(max_net_profit(10_000_000_000, E0), 50_000_000);
-        // Property: scales with a (hypothetical) edge.
-        assert_eq!(max_net_profit(10_000_000_000, 500), 250_000_000);
+    fn kelly_cap_equals_the_edge() {
+        // Full Kelly: 1% of bank at the 1% edge.
+        assert_eq!(max_net_profit(10_000_000_000, E0), 100_000_000);
+        // Property: scales with a (hypothetical) edge (5% → 5% of bank).
+        assert_eq!(max_net_profit(10_000_000_000, 500), 500_000_000);
         assert_eq!(max_net_profit(0, E0), 0);
     }
 

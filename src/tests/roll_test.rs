@@ -135,7 +135,7 @@ fn setup_with_bank(bank: u128) -> Result<(OutPoint, u128, u32)> {
     Ok((op_outpoint(&block), minted - bank, h))
 }
 
-const BANK: u128 = 250_000_000; // cap = 0.5% = 1_250_000 at the 1% edge
+const BANK: u128 = 250_000_000; // cap = 1% (full Kelly) = 2_500_000 at the 1% edge
 
 #[test]
 fn test_win_pays_from_bank_atomically() -> Result<()> {
@@ -190,8 +190,8 @@ fn test_lose_feeds_the_bank() -> Result<()> {
 fn test_oversized_bet_clamps_to_the_cap() -> Result<()> {
     let (bank_op, leftover, h) = setup_with_bank(BANK)?;
 
-    // 10M at ×1.98 → net exposure ≈ 9.8M ≫ cap 1.25M → the bet is CLAMPED
-    // down to max_bet (≈1.28M), not reverted; the excess comes back as
+    // 10M at ×1.98 → net exposure ≈ 9.8M ≫ cap 2.5M → the bet is CLAMPED
+    // down to max_bet (≈2.55M), not reverted; the excess comes back as
     // change. Force a lose so the accounting below is one-branch.
     let amount = 10_000_000u128;
     let target = 32_768u128;
