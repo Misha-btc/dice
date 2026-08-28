@@ -54,10 +54,6 @@ use cheeky_bricky_math::{
 /// the "min_bet mis-scaled for this token" footgun.
 pub const MIN_BET: u128 = 1_000;
 
-/// Creating a canonical table requires seeding its bank with at least this
-/// many units of the token, deposited as the creator's LP position — tables
-/// are born alive, and spamming the registry costs real tokens.
-const MIN_TABLE_SEED: u128 = 1_000;
 
 // ---------- Storage helpers (mirror fireball-game-runtime) ----------
 
@@ -208,11 +204,11 @@ pub trait CheekyBrickyBase: AlkaneResponder {
     // ---- CreateTable (the canonical factory front door) ----
 
     /// Permissionless: spin up the canonical table for `token` — exactly
-    /// once per token, forever. Payable in that token: the caller must
-    /// attach at least MIN_TABLE_SEED units, and EVERYTHING attached is
-    /// deposited into the new table as the caller's LP position (the minted
-    /// shares come back with the response) — tables are born alive, and
-    /// spamming the registry costs real tokens.
+    /// once per token, forever. NOT payable and NOT seeded: the table is born
+    /// empty (bank 0) and stays dormant until someone deposits, just like the
+    /// template's own table. The creator gets no privilege, so an empty
+    /// squatted table is worthless to squat; the only cost/gate is the
+    /// Bitcoin tx fee (which itself deters registry spam).
     ///
     /// The table's wallet identity is read from the token itself via the
     /// standard 99/100 opcodes ("Brick" → "Brick House" / "hBRICK") — no
@@ -247,15 +243,6 @@ pub trait CheekyBrickyBase: AlkaneResponder {
             ));
         }
 
-        // Anti-spam seed: everything attached becomes the first LP deposit.
-        let seed = incoming_sum(&context.incoming_alkanes.0, &token);
-        if seed < MIN_TABLE_SEED {
-            return Err(anyhow!(
-                "creating a table seeds its bank: attach at least {} units of the token (got {})",
-                MIN_TABLE_SEED,
-                seed
-            ));
-        }
 
         // Identity comes from the token itself (99 = name, 100 = symbol —
         // the MANDATORY wallet convention; a token that doesn't answer is
@@ -304,30 +291,15 @@ pub trait CheekyBrickyBase: AlkaneResponder {
             self.fuel(),
         )?;
         let table = AlkaneId { block: 2, tx: clone_seq };
-
-        // Seed the newborn bank: deposit the whole attached amount into the
-        // clone ON BEHALF OF THE CALLER — the minted share units come back in
-        // the sub-call response and are forwarded below.
-        let deposit_resp = self.call(
-            &Cellpack { target: table.clone(), inputs: vec![2, seed] },
-            &AlkaneTransferParcel(vec![AlkaneTransfer { id: token.clone(), value: seed }]),
-            self.fuel(),
-        )?;
-
         write_alkane_id(table_ptr(&token), &table);
 
-        // Forward: the creator's freshly minted shares + any non-token
-        // incoming they attached by mistake (the token itself was consumed
-        // by the seed deposit).
-        let mut response = CallResponse::default();
-        for t in deposit_resp.alkanes.0.iter() {
-            response.alkanes.0.push(t.clone());
-        }
-        for t in context.incoming_alkanes.0.iter() {
-            if t.id != token {
-                response.alkanes.0.push(t.clone());
-            }
-        }
+        // The table is born EMPTY (bank 0) — dormant until someone deposits,
+        // exactly like the template's own table. Creating it costs only the
+        // Bitcoin tx fee; the creator gets no privilege (edge, min_bet and
+        // identity are all fixed/derived), so there is nothing to gain by
+        // squatting an empty table. Hand back anything the caller attached by
+        // mistake (CreateTable is not payable) and return the table id.
+        let mut response = CallResponse::forward(&context.incoming_alkanes);
         let mut out = Vec::with_capacity(32);
         out.extend_from_slice(&table.block.to_le_bytes());
         out.extend_from_slice(&table.tx.to_le_bytes());

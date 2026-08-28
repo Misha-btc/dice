@@ -12,7 +12,6 @@ use crate::tests::helpers::{
     AlkaneId, Cellpack, DIESEL_ID,
 };
 use anyhow::Result;
-use cheeky_bricky_math::shares_for_deposit;
 
 const OP_DEPOSIT: u128 = 2;
 const VIEW_BANK: u128 = 101;
@@ -71,9 +70,9 @@ fn test_table_registry_one_table_per_token_forever() -> Result<()> {
     // The template registered ITSELF as the table for its own token.
     assert_eq!(table_of(&game_id(), &DIESEL_ID), game_id(), "self-registration");
 
-    // A second REAL token that follows the 99/100 wallet convention: a
-    // wildcat clone of the game itself, branded "WILD"/"WLD" — its share
-    // units are an ordinary fungible alkane we can hold and seed with.
+    // A 99/100-conforming token to register a table for: a WILD clone of the
+    // game itself (its shares are a fungible alkane with the wallet
+    // convention). No funding needed — CreateTable is not payable/seeded.
     let wild_block = create_operation_block(
         h,
         Cellpack {
@@ -95,48 +94,13 @@ fn test_table_registry_one_table_per_token_forever() -> Result<()> {
     assert_ne!(wild, zero, "wildcat token not found");
     assert_eq!(table_of(&game_id(), &wild), zero, "no table yet");
 
-    // Get units of it: deposit DIESEL into the wildcat → its shares.
-    let (minted, diesel_op) = mint_diesel(h)?;
-    h += 1;
-    let dep = create_op_block_with_token_input(
-        h,
-        Cellpack { target: wild, inputs: vec![OP_DEPOSIT, minted] },
-        diesel_op,
-        DIESEL_ID,
-        minted,
-    );
-    index_block(&dep, h)?;
-    let wild_units_op = crate::tests::helpers::OutPoint {
-        txid: dep.txdata[1].compute_txid(),
-        vout: 0,
-    };
-    let seed = shares_for_deposit(minted, 0, 0);
-    h += 1;
-
-    // No seed attached → revert (tables are born alive, spam costs tokens).
-    let no_seed = create_operation_block(
+    // Create the canonical table for WILD — no seed attached.
+    let create = create_operation_block(
         h,
         Cellpack { target: game_id(), inputs: vec![OP_CREATE_TABLE, wild.block, wild.tx] },
         None,
     );
-    index_block(&no_seed, h)?;
-    h += 1;
-    assert_eq!(table_of(&game_id(), &wild), zero, "seedless creation rejected");
-
-    // Create the canonical table for the WILD token, seeding it with our
-    // whole WILD balance (the harness routes the full outpoint in).
-    let create = create_op_block_with_token_input(
-        h,
-        Cellpack { target: game_id(), inputs: vec![OP_CREATE_TABLE, wild.block, wild.tx] },
-        wild_units_op,
-        wild,
-        seed,
-    );
     index_block(&create, h)?;
-    let creator_out = crate::tests::helpers::OutPoint {
-        txid: create.txdata[1].compute_txid(),
-        vout: 0,
-    };
     h += 1;
 
     let table = table_of(&game_id(), &wild);
@@ -148,18 +112,11 @@ fn test_table_registry_one_table_per_token_forever() -> Result<()> {
     assert_eq!(view_bytes(&table, vec![99]), b"WILD House".to_vec(), "derived name");
     assert_eq!(view_bytes(&table, vec![100]), b"hWLD".to_vec(), "derived symbol");
 
-    // The seed landed as the creator's LP position: table bank = seed,
-    // creator holds the bootstrap shares of the NEW table.
-    assert_eq!(first_u128(&view_bytes(&table, vec![101])), seed, "bank seeded");
-    let sheet = crate::tests::helpers::get_sheet_by_outpoint(&creator_out)?;
-    assert_eq!(
-        sheet.get_cached(&table.into()),
-        shares_for_deposit(seed, 0, 0),
-        "creator got the first-LP shares"
-    );
+    // Born EMPTY: bank 0, no shares — dormant until someone deposits.
+    assert_eq!(first_u128(&view_bytes(&table, vec![101])), 0, "bank starts empty");
+    assert_eq!(first_u128(&view_bytes(&table, vec![101])[16..]), 0, "no shares yet");
 
-    // Second creation for the same token reverts (registry check fires
-    // first); the original id survives.
+    // Second creation for the same token reverts; the original id survives.
     let again = create_operation_block(
         h,
         Cellpack { target: game_id(), inputs: vec![OP_CREATE_TABLE, wild.block, wild.tx] },

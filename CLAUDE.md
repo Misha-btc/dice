@@ -99,7 +99,7 @@ enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-rui
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in; CLAMPED not reverted; **`amount = 0` bets everything sent** — the primary mint-and-roll flow (`[mint] → [Roll(target,0)]`, mint size unknowable at compose time); response data `(roll, win, payout, effective_amount)` 4×u128 LE |
 | 2 | `Deposit` | `amount` | bet token → mint CBRK shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor (0=off) |
-| 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, payable in the token: ≥1000-unit seed becomes the creator's first LP deposit (shares returned); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
+| 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
 | 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky" / "CBRK" — **wallet convention, load-bearing** |
 | 101 | `ViewBank` | — | `(bank, total_shares)` |

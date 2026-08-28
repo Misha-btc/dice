@@ -174,18 +174,18 @@ wallets can tell the share tokens apart.
 **The canonical front door is the registry.** The template deployed at
 `4:TX` hosts `/table/{token_id}` (clones have isolated storage, so the
 registry lives in one place) and registers ITSELF for its own token at
-init. `CreateTable{token}` (opcode 4, permissionless, payable in that
-token) checks "no table for this token yet", reads the table's identity
-from the token's own 99/100 ("Brick" → "Brick House"/"hBRICK" — no
-caller-supplied strings; a token that doesn't answer the mandatory wallet
-convention reverts the creation by design), factory-clones
-the template (min_bet is a fixed 1000), records the clone id — **one
-table per token, forever** — and returns it. The caller must attach
-≥ 1000 units of the token: ALL of it is deposited into the newborn table
-as the creator's first LP position (shares returned) — tables are born
-alive and registry spam costs real tokens. `ViewTableOf{token}` (opcode
-105) resolves a token to its table (zeros = none). Calling CreateTable on
-a clone reverts.
+init. `CreateTable{token}` (opcode 4, permissionless) checks "no table for
+this token yet", reads the table's identity from the token's own 99/100
+("Brick" → "Brick House"/"hBRICK" — no caller-supplied strings; a token
+that doesn't answer the mandatory wallet convention reverts by design),
+factory-clones the template, records the clone id — **one table per token,
+forever** — and returns it. It is NOT payable and NOT seeded: the table is
+born EMPTY (bank 0), dormant until someone deposits, exactly like the
+template's own table. The creator gets no privilege (edge/min_bet/identity
+all fixed or derived), so squatting an empty table is pointless; the
+Bitcoin tx fee is the only spam gate. `ViewTableOf{token}` (opcode 105)
+resolves a token to its table (zeros = none). Calling CreateTable on a
+clone reverts.
 
 Raw `[6, TX, 0, ...]` clones remain possible at the protocol level (that
 cannot be forbidden) but are NOT in the registry: ecosystem frontends
@@ -225,7 +225,7 @@ entire game, forever.
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
 | 0 | `InitCheekyBricky` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); min_bet is a compile-time 1000; self-registers in the table registry |
-| 4 | `CreateTable` | `token_block, token_tx` | permissionless, payable in the token (≥1000-unit seed → creator's LP shares); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
+| 4 | `CreateTable` | `token_block, token_tx` | permissionless, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in `--inputs`; clamped not reverted; `amount = 0` bets everything sent (mint-and-roll); response data `(roll, win, payout, effective_amount)` |
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; slippage floor |

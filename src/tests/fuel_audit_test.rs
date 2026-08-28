@@ -123,12 +123,7 @@ fn fuel_audit_all_opcodes() -> Result<()> {
     // THE HEAVY ONE: clone + init + 2 staticcalls + sub-deposit.
     rows.push((
         "CreateTable (4)",
-        measure(
-            &g,
-            vec![4, wild.block, wild.tx],
-            vec![rune(wild.clone(), seed)],
-            880_050,
-        )?,
+        measure(&g, vec![4, wild.block, wild.tx], vec![], 880_050)?,
     ));
 
     print_table(&rows);

@@ -59,15 +59,15 @@ pub enum CheekyBrickyMessage {
     Withdraw { shares: u128, min_payout: u128 },
 
     /// Permissionless factory front door: create the CANONICAL table for a
-    /// token — exactly once per token, forever. Payable in that token:
-    /// attach ≥ 1000 units, ALL of it seeds the new table's bank as the
-    /// caller's LP deposit (minted shares returned) — tables are born
-    /// alive, registry spam costs real tokens. Identity is read from the
-    /// token's own 99/100 ("Brick" → "Brick House"/"hBRICK"), so a dead id
-    /// fails here. Returns the table id as `(block, tx)` 2×u128 LE.
-    /// Registry lives on the block-4 template only. Raw `[6,TX,0,…]` clones
-    /// stay possible but unregistered — invisible to frontends that resolve
-    /// via ViewTableOf.
+    /// token — exactly once per token, forever. NOT payable / NOT seeded: the
+    /// table is born empty (dormant until someone deposits), like the
+    /// template's own table; the creator gets no privilege, so squatting an
+    /// empty table is pointless and the tx fee is the only spam gate.
+    /// Identity is read from the token's own 99/100 ("Brick" → "Brick
+    /// House"/"hBRICK"), so a dead id fails here. Returns the table id as
+    /// `(block, tx)` 2×u128 LE. Registry lives on the block-4 template only.
+    /// Raw `[6,TX,0,…]` clones stay possible but unregistered — invisible to
+    /// frontends that resolve via ViewTableOf.
     #[opcode(4)]
     CreateTable {
         token_block: u128,
