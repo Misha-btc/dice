@@ -23,15 +23,18 @@ per bet AND per block aggregate, independent of chosen odds) makes the bank
 mathematically unruinable and gives LPs a positive long-run log-drift — the "LPs
 win in the long run" guarantee is the core design goal.
 
-**Operator revenue = a 2% LP-exit fee** (`EXIT_BPS`, in the game runtime). Players
-pay NO house rake — the whole 1% edge still goes to LPs. The operator earns only
-when an LP *withdraws*: 2% of the gross payout is retained in the table's own
-`/fee_accum` (LP gets 98%). Each table holds its own fee in its own single bet
-token — no shared treasury, no cross-token registry. The operator collects it
-per-table via `WithdrawFees` (opcode 6), gated by a **hardcoded auth key**
+**Operator revenue = a mutable LP-exit fee, capped at 2%.** Players pay NO house
+rake — the whole 1% edge still goes to LPs. The operator earns only when an LP
+*withdraws*: the current fee (`/exit_bps`, 0..200 bps) of the gross payout is
+retained in the table's own `/fee_accum` (LP gets the rest). The fee is
+**operator-adjustable** via `SetExitFee` (opcode 7) but **can never exceed the
+compile-time `EXIT_BPS_MAX = 200` (2%)** — a hard, immutable LP guarantee; 0 is
+allowed (free exits). Each table holds its own fee in its own single bet token —
+no shared treasury, no cross-token registry. The operator collects it per-table
+via `WithdrawFees` (opcode 6). Both ops are gated by a **hardcoded auth key**
 (`OPERATOR_AUTH_ID = 4:0x7EA5`, a minimal standalone token minted to the deployer);
-one key drains every table the operator runs. No external call on the path, so
-nothing can strand the fee.
+one key controls every table. No external call on the path, so nothing can strand
+the fee.
 
 **Immutable by design** (same philosophy as sister project
 [arbuzino/Fireball](../arbuzino)): no proxy, no upgrade path, no admin *on the
@@ -102,8 +105,9 @@ VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share r
 Plus one constant in `cheeky-bricky-game-runtime` (not math):
 
 ```rust
-EXIT_BPS  = 200            // 2% of each LP withdrawal → the table's /fee_accum (LP gets 98%)
-OPERATOR_AUTH_ID = 4:0x7EA5 // hardcoded auth key; WithdrawFees requires it (one key, all tables)
+EXIT_BPS_MAX = 200         // 2% — IMMUTABLE ceiling on the LP-exit fee (hard LP guarantee)
+/exit_bps (storage)        // live fee 0..200, operator-set via SetExitFee; init defaults to 200
+OPERATOR_AUTH_ID = 4:0x7EA5 // hardcoded auth key; WithdrawFees + SetExitFee require it (one key, all tables)
 ```
 
 Oversized bets are **clamped down** to fit the caps (excess returned as change,
@@ -124,10 +128,11 @@ enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-rui
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
 | 6 | `WithdrawFees` | — | **operator-only** (attach the `OPERATOR_AUTH_ID` key, spent-and-returned); pays this table's whole `/fee_accum` (bet token) to the caller and zeroes it. Reverts on a missing key or zero balance. No external call |
+| 7 | `SetExitFee` | `bps` | **operator-only** (auth key, returned); set `/exit_bps = bps`, reverts if `bps > 200` (the 2% ceiling is immutable). `0` = free exits |
 | 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky" / "CBRK" — **wallet convention, load-bearing** |
-| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum)` |
+| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 4 is the live fee |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
-| 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx)` |
+| 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx, exit_bps_max)` — field 7 is the immutable 2% fee ceiling |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
 
@@ -155,7 +160,8 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 /total_shares      u128  (CBRK supply)
 /last_win_height   u128  (per-block budget bookkeeping)
 /paid_this_block   u128  (Σ realized net payouts at last_win_height)
-/fee_accum         u128  (accrued 2% LP-exit fees, bet-token; paid out by WithdrawFees)
+/exit_bps          u128  (live LP-exit fee 0..200; operator-set via SetExitFee, init=200)
+/fee_accum         u128  (accrued LP-exit fees, bet-token; paid out by WithdrawFees)
 /total_bets, /total_wagered, /total_won   u128  (stats)
 ```
 
@@ -191,13 +197,16 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 - **Roll is top-level-only**: `context.caller == {0,0}` or revert — the
   flash/atomic-revert guard. Wrapper alkanes can't filter losses.
 - **One-shot init** (`/initialized`), **bet token ≠ self**, **one table per
-  token** (registry), **the only privileged op is `WithdrawFees`** (auth-gated,
-  and it only ever pays out fees the operator already earned), **rounding favors
-  the bank**, **Kelly + block caps** bound every payout.
-- **Exit-fee safety**: the fee accrues in the table's own `/fee_accum` and
-  `WithdrawFees` pays it from the balance the game already holds — no external
-  call, nothing to strand. LP `Withdraw` never touches the auth path, so the
-  operator (or a lost key) can never block or freeze an LP exit.
+  token** (registry), **the only privileged ops are `WithdrawFees` and
+  `SetExitFee`** (both auth-gated; they only touch fee revenue, never the bank or
+  LP shares), **rounding favors the bank**, **Kelly + block caps** bound every
+  payout.
+- **Exit-fee safety**: the fee is capped at the immutable `EXIT_BPS_MAX` (2%) — 
+  `SetExitFee` reverts above it and `exit_bps()` clamps defensively, so no operator
+  action can ever make exiting cost more than 2%. The fee accrues in the table's
+  own `/fee_accum` and `WithdrawFees` pays it from the balance the game already
+  holds — no external call, nothing to strand. LP `Withdraw` never touches the auth
+  path, so the operator (or a lost key) can never block or freeze an LP exit.
 
 ## Test Coverage
 
@@ -206,12 +215,13 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
   + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
   1000-consecutive-wins survival, share pricing (virtual offset, round-trip,
   solvency fuzz, inflation-attack unprofitability), mul_div 256-bit.
-- **Integration (22, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+- **Integration (25, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
   98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)
   (`lp_test`); exit fee — accrue on withdraw → operator collects via auth-gated
-  `WithdrawFees` (keyless attempt reverts; empty-fee reverts and refunds the key)
-  (`exit_fee_test`);
+  `WithdrawFees` (keyless attempt reverts; empty-fee reverts and refunds the key);
+  **`SetExitFee` lowers the cut (1% nets 99%), 0 = free exit, > 200 reverts,
+  keyless reverts** (`exit_fee_test`);
   forced win/lose settlement, `amount=0` bets-everything sentinel,
   oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust
   rejections, ViewMaxBet vs math, LP appreciation after losses (`roll_test`);

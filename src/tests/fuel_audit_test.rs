@@ -82,7 +82,7 @@ fn fuel_audit_all_opcodes() -> Result<()> {
     for tx in 0..16u128 {
         let id = AlkaneId { block: 2, tx };
         if alkanes::view::call_view(&id, &vec![103u128], MEASURE_FUEL)
-            .map(|v| v.len() == 96)
+            .map(|v| v.len() == 112)
             .unwrap_or(false)
         {
             wild = id;
@@ -135,6 +135,8 @@ fn fuel_audit_all_opcodes() -> Result<()> {
     // auth key is supplied as an incoming rune (no contract deploy needed).
     let auth = AlkaneId { block: 4, tx: 0x7EA5 };
     rows.push(("WithdrawFees (6)", measure(&g, vec![6], vec![rune(auth, 1)], 880_050)?));
+    // SetExitFee: auth-gated single storage write.
+    rows.push(("SetExitFee (7)", measure(&g, vec![7, 100], vec![rune(auth, 1)], 880_050)?));
     rows.push((
         "Roll (1)",
         measure(&g, vec![1, 32_768, bet, 0], vec![rune(DIESEL_ID, bet)], 880_050)?,

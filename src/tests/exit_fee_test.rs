@@ -1,6 +1,7 @@
 //! LP-exit fee → operator, end to end.
 //!
-//! Every LP withdrawal keeps 2% (`EXIT_BPS`) of the gross payout in the table's
+//! Every LP withdrawal keeps the live exit fee (default 2% = `EXIT_BPS_MAX`,
+//! operator-adjustable in `[0, 2%]` via `SetExitFee`) of the gross payout in the table's
 //! own `/fee_accum` (still the bet token); the LP receives 98%. `WithdrawFees`
 //! (opcode 6) pays that accrued fee to whoever presents the hardcoded operator
 //! auth key (4:0x7EA5) — one key drains every table the operator runs — and
@@ -22,7 +23,10 @@ use cheeky_bricky_math::{shares_for_deposit, withdraw_payout};
 const OP_DEPOSIT: u128 = 2;
 const OP_WITHDRAW: u128 = 3;
 const OP_WITHDRAW_FEES: u128 = 6;
+const OP_SET_EXIT_FEE: u128 = 7;
 const VIEW_BANK: u128 = 101;
+const VIEW_CONFIG: u128 = 103;
+const EXIT_BPS_MAX: u128 = 200;
 const FUEL: u64 = 100_000_000;
 
 fn op_outpoint(block: &bitcoin::Block) -> OutPoint {
@@ -119,6 +123,137 @@ fn test_operator_withdraws_fee_with_auth_key() -> Result<()> {
     assert_eq!(bal(&out, operator), 1, "auth key returned (spent-and-returned)");
     assert_eq!(view(VIEW_BANK).get(2).copied(), Some(0), "fee_accum zeroed after withdrawal");
     test_log!("[EXIT] operator withdrew fee {} with auth key", fee);
+    Ok(())
+}
+
+/// Deploy game + operator, mint DIESEL, and set the exit fee to `bps` using the
+/// auth key. Returns `(diesel_op, minted, operator, key, next_height)`.
+fn deploy_and_set_fee(bps: u128) -> Result<(OutPoint, u128, AlkaneId, OutPoint, u32)> {
+    clear_test_environment();
+    let deploy = deploy_cheeky_bricky()?;
+    let mut h = deploy.last_height;
+    let (operator, mut key, next_h) = deploy_operator(h)?;
+    h = next_h;
+    let (minted, diesel_op) = mint_diesel(h)?;
+    h += 1;
+
+    let sf = create_op_block_with_token_input(
+        h,
+        Cellpack { target: game_id(), inputs: vec![OP_SET_EXIT_FEE, bps] },
+        key,
+        operator,
+        1,
+    );
+    index_block(&sf, h)?;
+    key = op_outpoint(&sf); // the key rode back here
+    h += 1;
+    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(bps), "ViewBank field 4 == set fee");
+    Ok((diesel_op, minted, operator, key, h))
+}
+
+/// Deposit `amount` then withdraw ALL shares; returns `(gross, lp_net_received)`.
+fn deposit_then_full_withdraw(
+    diesel_op: OutPoint,
+    minted: u128,
+    amount: u128,
+    h: &mut u32,
+) -> Result<(u128, u128)> {
+    let total_shares = shares_for_deposit(amount, 0, 0);
+    let dep = create_op_block_with_token_input(
+        *h,
+        Cellpack { target: game_id(), inputs: vec![OP_DEPOSIT, amount] },
+        diesel_op,
+        DIESEL_ID,
+        minted,
+    );
+    index_block(&dep, *h)?;
+    let dep_out = op_outpoint(&dep);
+    *h += 1;
+
+    let gross = withdraw_payout(total_shares, amount, total_shares);
+    let wd = create_op_block_with_token_input(
+        *h,
+        Cellpack { target: game_id(), inputs: vec![OP_WITHDRAW, total_shares, 0] },
+        dep_out,
+        game_id(),
+        total_shares,
+    );
+    index_block(&wd, *h)?;
+    let ride = minted - amount;
+    let got = bal(&op_outpoint(&wd), DIESEL_ID);
+    *h += 1;
+    Ok((gross, got - ride)) // subtract the deposit-change that rode along
+}
+
+#[test]
+fn test_set_exit_fee_lowers_the_cut() -> Result<()> {
+    // Operator sets the fee to 1% (100 bps). A withdrawal then nets 99%.
+    let (diesel_op, minted, _op, _key, mut h) = deploy_and_set_fee(100)?;
+    let amount = 200_000_000u128;
+    let (gross, lp_net) = deposit_then_full_withdraw(diesel_op, minted, amount, &mut h)?;
+    let fee = gross * 100 / 10_000;
+    assert_eq!(lp_net, gross - fee, "LP nets 99% at a 1% fee");
+    assert_eq!(view(VIEW_BANK).get(2).copied(), Some(fee), "fee_accum holds the 1% cut");
+    test_log!("[EXIT] fee=100bps: gross {}, fee {}, lp {}", gross, fee, lp_net);
+    Ok(())
+}
+
+#[test]
+fn test_set_exit_fee_zero_means_free_exit() -> Result<()> {
+    // Operator sets the fee to 0. A withdrawal nets 100%; nothing accrues.
+    let (diesel_op, minted, _op, _key, mut h) = deploy_and_set_fee(0)?;
+    let amount = 200_000_000u128;
+    let (gross, lp_net) = deposit_then_full_withdraw(diesel_op, minted, amount, &mut h)?;
+    assert_eq!(lp_net, gross, "LP nets 100% at a 0% fee");
+    assert_eq!(view(VIEW_BANK).get(2).copied(), Some(0), "no fee accrues");
+    Ok(())
+}
+
+#[test]
+fn test_set_exit_fee_cannot_exceed_max_or_skip_auth() -> Result<()> {
+    clear_test_environment();
+    let deploy = deploy_cheeky_bricky()?;
+    let mut h = deploy.last_height;
+    let (operator, key, next_h) = deploy_operator(h)?;
+    h = next_h;
+
+    // Default fee is the 2% max; ViewConfig field 7 reports the immutable ceiling.
+    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(EXIT_BPS_MAX), "default fee = max");
+    assert_eq!(view(VIEW_CONFIG).get(6).copied(), Some(EXIT_BPS_MAX), "ViewConfig exposes the max");
+
+    // Above the ceiling reverts (with the key) — fee unchanged.
+    let over = create_op_block_with_token_input(
+        h,
+        Cellpack { target: game_id(), inputs: vec![OP_SET_EXIT_FEE, EXIT_BPS_MAX + 1] },
+        key,
+        operator,
+        1,
+    );
+    index_block(&over, h)?;
+    let key2 = op_outpoint(&over); // key refunded on revert
+    h += 1;
+    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(EXIT_BPS_MAX), "over-max rejected, fee unchanged");
+
+    // Without the key reverts too — even a valid value.
+    let noauth = create_operation_block(
+        h,
+        Cellpack { target: game_id(), inputs: vec![OP_SET_EXIT_FEE, 50] },
+        None,
+    );
+    index_block(&noauth, h)?;
+    h += 1;
+    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(EXIT_BPS_MAX), "keyless set rejected");
+
+    // A valid in-range set with the key sticks.
+    let ok = create_op_block_with_token_input(
+        h,
+        Cellpack { target: game_id(), inputs: vec![OP_SET_EXIT_FEE, 50] },
+        key2,
+        operator,
+        1,
+    );
+    index_block(&ok, h)?;
+    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(50), "in-range set applied");
     Ok(())
 }
 

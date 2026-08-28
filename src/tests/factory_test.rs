@@ -232,8 +232,9 @@ fn test_factory_clone_spins_an_independent_game() -> Result<()> {
     // The clone's config is fully populated and matches the template's
     // immutable constants (same bytecode, own storage).
     let clone_cfg = view_bytes(&clone, vec![103]);
-    assert_eq!(clone_cfg.len(), 96, "clone ViewConfig shape");
+    assert_eq!(clone_cfg.len(), 112, "clone ViewConfig shape");
     assert_eq!(first_u128(&clone_cfg[16..]), 100, "clone edge is the fixed 1%");
+    assert_eq!(first_u128(&clone_cfg[96..]), 200, "clone exit-fee ceiling is 2%");
 
     // This was a RAW clone (not via CreateTable): it works, but it is a
     // "wildcat" — the canonical registry still points DIESEL at the

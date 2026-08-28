@@ -75,8 +75,9 @@ Runtime support confirmed: `alkanes-runtime` exposes `block_header()` and
 `EDGE_BPS = 100` — a compile-time constant, the industry-standard dice edge
 (just-dice's number). No admin, no auth token, no knob: nobody can change it
 in either direction, ever. **The whole edge accrues to the bank — players pay
-no house rake.** The operator's only cut is a separate 2% fee an LP pays *when
-withdrawing* (see "Operator revenue" below) — never a skim on play.
+no house rake.** The operator's only cut is a fee an LP pays *when withdrawing*,
+adjustable within `[0, 2%]` but hard-capped at 2% (see "Operator revenue" below) —
+never a skim on play.
 
 ### The Kelly cap — the LP guarantee (this is the whole point)
 
@@ -145,12 +146,12 @@ player's wallet. Both modes coexist in the UI as a toggle.
   alkane itself** (same self-mint machinery as the existing vault; no NFTs).
   Shares minted = `amount · total_shares / B` (1:1 bootstrap).
 - `Withdraw { shares, min_payout }`: burn shares → gross `shares · B / total_shares`
-  of the bet token; **a 2% exit fee (`EXIT_BPS = 200`) is retained in `/fee_accum`
-  and the LP receives 98%** (see "Operator revenue"). The bank is debited by the
-  full gross; the fee just moves from `/bank` into `/fee_accum` (both bet-token,
-  both held by the contract). `min_payout` is the slippage floor applied to the
-  NET amount the LP receives (share price moves with every bet; pattern ported
-  from the vault's redeem). Overpaid shares returned as change.
+  of the bet token; **the current exit fee (`/exit_bps`, 0..2%) is retained in
+  `/fee_accum` and the LP receives the rest** (see "Operator revenue"). The bank is
+  debited by the full gross; the fee just moves from `/bank` into `/fee_accum`
+  (both bet-token, both held by the contract). `min_payout` is the slippage floor
+  applied to the NET amount the LP receives (share price moves with every bet;
+  pattern ported from the vault's redeem). Overpaid shares returned as change.
 - Share price `B / total_shares` only changes through game results and
   donations — deposits/withdrawals are neutral by construction (`mul_div` from
   `fireball-vault-math`, reused).
@@ -161,23 +162,31 @@ player's wallet. Both modes coexist in the UI as a toggle.
 - `Donate { amount }`: grows B without minting — a gift to LPs (marketing
   pumps, treasury seeding).
 
-## Operator revenue: a 2% LP-exit fee (2026-08-27)
+## Operator revenue: an LP-exit fee, capped at 2% (2026-08-27)
 
 Players still pay **no house rake** — the payout multiplier embeds the full 1%
 edge and every losing stake lands in the LP bank whole. The operator's only
-revenue is a **2% fee on LP withdrawals** (`EXIT_BPS = 200`), chosen by the owner
-over a per-bet protocol fee precisely because it never touches the player-facing
-odds and only charges capital that is *leaving* the house.
+revenue is a fee on LP withdrawals, chosen by the owner over a per-bet protocol
+fee precisely because it never touches the player-facing odds and only charges
+capital that is *leaving* the house.
+
+The fee is **adjustable by the operator** (`SetExitFee`, opcode 7) but **bounded
+by the immutable `EXIT_BPS_MAX = 200` (2%)** — a compile-time ceiling that no
+operator action can exceed, so LPs have a permanent guarantee that exiting will
+never cost more than 2%. The minimum is 0 (free exits). The live value lives in
+`/exit_bps` and defaults to the 2% max at init.
 
 Flow (all in the bet token):
-1. `Withdraw` retains 2% of the gross payout in the table's own `/fee_accum` (the
-   LP gets 98%). The fee stays in the contract's own balance — no external call,
-   nothing to strand.
+1. `Withdraw` retains the current fee (`/exit_bps`, 0..200 bps) of the gross
+   payout in the table's own `/fee_accum` (the LP gets the rest). The fee stays in
+   the contract's own balance — no external call, nothing to strand.
 2. `WithdrawFees` (opcode 6) pays the whole `/fee_accum` to the caller and zeroes
    it — but ONLY if the caller presents the hardcoded operator auth key
    (`OPERATOR_AUTH_ID = 4:0x7EA5`). The key is spent-and-returned (never
    consumed), so one key drains every table the operator runs. Reverts on a
    missing key or a zero balance.
+3. `SetExitFee { bps }` (opcode 7, same auth key) sets `/exit_bps` for that table;
+   reverts if `bps > EXIT_BPS_MAX`. One key adjusts every table.
 
 **Why per-table, not a shared treasury.** Each table has exactly one bet token, so
 its fee is single-token and stays put until collected — no sink contract holding
@@ -248,7 +257,8 @@ entire game, forever.
 (min_bet is a compile-time constant 1000, not stored)
 /last_win_height      u128   (per-block budget bookkeeping)
 /paid_this_block      u128   (Σ realized net payouts at last_win_height)
-/fee_accum            u128   (accrued 2% LP-exit fees, bet-token; paid out by WithdrawFees)
+/exit_bps             u128   (live LP-exit fee 0..200; operator-set via SetExitFee, init=200)
+/fee_accum            u128   (accrued LP-exit fees, bet-token; paid out by WithdrawFees)
 /total_bets           u128   (stats)
 /total_wagered        u128   (stats: Σ effective bets)
 /total_won            u128   (stats: Σ payouts)
@@ -266,13 +276,14 @@ operator auth (separate contract, 4:0x7EA5):
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in `--inputs`; clamped not reverted; `amount = 0` bets everything sent (mint-and-roll); response data `(roll, win, payout, effective_amount)` |
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
-| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token minus the 2% exit fee (LP gets 98%, fee → `/fee_accum`); slippage floor on the net |
+| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token minus the current exit fee (0..2%, fee → `/fee_accum`); slippage floor on the net |
 | 5 | `Donate` | `amount` | grow the bank, no shares |
 | 6 | `WithdrawFees` | — | operator-only (attach `OPERATOR_AUTH_ID` key, returned); pays this table's `/fee_accum` to the caller, zeroes it; reverts on a missing key or zero balance |
+| 7 | `SetExitFee` | `bps` | operator-only (auth key, returned); set `/exit_bps = bps`; reverts if `bps > 200` (2% ceiling immutable); `0` = free exits |
 | 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Cheeky Bricky" / "CBRK" |
-| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum)` — field 3 is the operator's accrued fee |
+| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 3 = accrued fee, field 4 = live fee bps |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
-| 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx)` |
+| 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx, exit_bps_max)` — field 7 = 2% ceiling |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank+edge |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
 
@@ -370,6 +381,14 @@ alkane forwards a Roll from its own contract context and the call reverts
     test suite stable, and there is nothing to redirect (auth is possession, the
     payout always goes to the caller). Kept off the LP-withdraw path so a lost key
     can never freeze exits.
+11. **Exit fee made adjustable, cap kept immutable** (owner's call, 2026-08-27:
+    "менять комиссию но чтобы максимум всё равно всегда был 2%, минимум 0"). The
+    live fee moved into `/exit_bps` (init = 200) with an operator-only `SetExitFee`
+    (opcode 7) that reverts above `EXIT_BPS_MAX = 200`; `exit_bps()` clamps on read
+    too. So the operator can tune the fee anywhere in `[0, 2%]` per table, but the
+    2% ceiling is compiled in and unbreakable — LPs keep a hard "never more than
+    2% to exit" guarantee. Exposed: live fee in `ViewBank` field 4, the immutable
+    ceiling in `ViewConfig` field 7.
 
 ## Permissionless-table footguns (acknowledged, immutable)
 

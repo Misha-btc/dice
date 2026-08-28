@@ -54,11 +54,14 @@ use cheeky_bricky_math::{
 /// the "min_bet mis-scaled for this token" footgun.
 pub const MIN_BET: u128 = 1_000;
 
-/// LP-exit fee: 2% of a withdrawal is kept for the operator (players never pay
-/// a house rake — the whole 1% edge still goes to LPs; only LPs pay this, once,
-/// on the way out). Each table accrues its own fee in its own bet token
-/// (`/fee_accum`); the operator collects it per-table via `WithdrawFees`.
-pub const EXIT_BPS: u128 = 200;
+/// The IMMUTABLE ceiling on the LP-exit fee: 2%, compiled in. The live fee
+/// (`/exit_bps`) is operator-adjustable within `[0, EXIT_BPS_MAX]` via
+/// `SetExitFee`, but can NEVER exceed this — so LPs have a hard guarantee that
+/// exiting will never cost more than 2%, no matter what the operator does.
+/// Players never pay a house rake (the whole 1% edge goes to LPs); only LPs pay
+/// this, once, on the way out. Each table accrues its own fee in its own bet
+/// token (`/fee_accum`); the operator collects it per-table via `WithdrawFees`.
+pub const EXIT_BPS_MAX: u128 = 200;
 
 /// The operator auth key (hardcoded, shared by the template and every clone).
 /// `WithdrawFees` releases a table's `/fee_accum` only to a caller who presents
@@ -102,6 +105,19 @@ fn write_alkane_id(mut p: StoragePointer, id: &AlkaneId) {
 /// The immutable bet/bank currency, set once at init (mainnet: 2:490).
 fn bet_token() -> Result<AlkaneId> {
     read_alkane_id(ptr("/bet_token"))
+}
+
+/// The live LP-exit fee in bps, operator-adjustable but ALWAYS clamped to the
+/// immutable `EXIT_BPS_MAX` ceiling (defensive — `SetExitFee` already rejects
+/// anything above it, and init seeds it to the max). A stored 0 is a valid fee
+/// (free exits).
+fn exit_bps() -> u128 {
+    let v = read_u128(ptr("/exit_bps"));
+    if v > EXIT_BPS_MAX {
+        EXIT_BPS_MAX
+    } else {
+        v
+    }
 }
 
 /// Registry slot for the canonical table of `token`. Lives in the CANONICAL
@@ -190,6 +206,9 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         write_alkane_id(ptr("/bet_token"), &token);
         write_u128(ptr("/bank"), 0);
         write_u128(ptr("/total_shares"), 0);
+        // Launch exit fee = the 2% max; the operator can lower it (down to 0)
+        // via SetExitFee, never raise it above EXIT_BPS_MAX.
+        write_u128(ptr("/exit_bps"), EXIT_BPS_MAX);
 
         // Per-instance wallet identity (clones must be tellable apart).
         let name_s = trim(name);
@@ -592,10 +611,11 @@ pub trait CheekyBrickyBase: AlkaneResponder {
             return Err(anyhow!("payout would be zero — not burning shares for nothing"));
         }
 
-        // 2% exit fee for the operator: split off the gross payout, keep it in
-        // the contract (bet token) as /fee_accum, pay the LP the remaining 98%.
-        // The min_payout slippage floor applies to what the LP actually gets.
-        let fee = mul_div(payout, EXIT_BPS, BPS);
+        // LP-exit fee for the operator: split off the current fee (0..2%) from
+        // the gross payout, keep it in the contract (bet token) as /fee_accum,
+        // pay the LP the rest. The min_payout slippage floor applies to what the
+        // LP actually gets. `exit_bps()` is clamped to the immutable 2% ceiling.
+        let fee = mul_div(payout, exit_bps(), BPS);
         let lp_amount = payout - fee;
         if lp_amount < min_payout {
             return Err(anyhow!(
@@ -639,17 +659,12 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         Ok(response)
     }
 
-    // ---- WithdrawFees ----
+    // ---- Operator auth ----
 
-    /// Operator-only: pay out this table's accrued exit fees (`/fee_accum`, in
-    /// the bet token) to the caller and zero the accumulator. Auth is the
-    /// hardcoded `OPERATOR_AUTH_ID` key, which must be present in the incoming
-    /// set — it is spent-and-returned (never consumed), so one key drains every
-    /// table the operator runs. No external call, so nothing can strand the fee;
-    /// the fee simply comes out of the balance the game already holds from the
-    /// carve-out. Reverts on a zero balance or a missing key. Any other incoming
-    /// (including the key) is handed straight back.
-    fn withdraw_fees(&self) -> Result<CallResponse> {
+    /// Revert unless the caller presents the hardcoded operator auth key
+    /// (`OPERATOR_AUTH_ID`) in the incoming set. The key is never consumed —
+    /// callers forward the incoming set back — so one key controls every table.
+    fn require_operator(&self) -> Result<()> {
         let context = self.context()?;
         let auth: u128 = context
             .incoming_alkanes
@@ -661,6 +676,21 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         if auth < 1 {
             return Err(anyhow!("not operator: attach the operator auth key"));
         }
+        Ok(())
+    }
+
+    // ---- WithdrawFees ----
+
+    /// Operator-only: pay out this table's accrued exit fees (`/fee_accum`, in
+    /// the bet token) to the caller and zero the accumulator. Auth is the
+    /// hardcoded `OPERATOR_AUTH_ID` key, spent-and-returned (never consumed), so
+    /// one key drains every table the operator runs. No external call, so
+    /// nothing can strand the fee; it simply comes out of the balance the game
+    /// already holds from the carve-out. Reverts on a zero balance or a missing
+    /// key. Any other incoming (including the key) is handed straight back.
+    fn withdraw_fees(&self) -> Result<CallResponse> {
+        self.require_operator()?;
+        let context = self.context()?;
         let token = bet_token()?;
         let fee = read_u128(ptr("/fee_accum"));
         if fee == 0 {
@@ -672,6 +702,26 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         let mut response = CallResponse::forward(&context.incoming_alkanes);
         response.alkanes.0.push(AlkaneTransfer { id: token, value: fee });
         Ok(response)
+    }
+
+    // ---- SetExitFee ----
+
+    /// Operator-only: set this table's live LP-exit fee to `bps`, which must be
+    /// in `[0, EXIT_BPS_MAX]` (2%). Reverts if it exceeds the ceiling — the 2%
+    /// cap is immutable, so even the operator can never make exiting cost more.
+    /// 0 is allowed (free exits). Auth is the `OPERATOR_AUTH_ID` key, returned.
+    fn set_exit_fee(&self, bps: u128) -> Result<CallResponse> {
+        self.require_operator()?;
+        if bps > EXIT_BPS_MAX {
+            return Err(anyhow!(
+                "exit fee {} exceeds the immutable max {} bps (2%)",
+                bps,
+                EXIT_BPS_MAX
+            ));
+        }
+        write_u128(ptr("/exit_bps"), bps);
+        let context = self.context()?;
+        Ok(CallResponse::forward(&context.incoming_alkanes))
     }
 
     // ---- Donate ----
@@ -738,16 +788,18 @@ pub trait CheekyBrickyBase: AlkaneResponder {
 
     // ---- Views ----
 
-    /// `(bank, total_shares, fee_accum)` as 3×u128 LE (48 bytes). Share price
-    /// is `(bank + 1) / (total_shares + 10^6)` (virtual offset). `fee_accum` is
-    /// the operator's accrued 2% exit fee awaiting `WithdrawFees`.
+    /// `(bank, total_shares, fee_accum, exit_bps)` as 4×u128 LE (64 bytes).
+    /// Share price is `(bank + 1) / (total_shares + 10^6)` (virtual offset).
+    /// `fee_accum` is the operator's accrued exit fee awaiting `WithdrawFees`;
+    /// `exit_bps` is the live LP-exit fee (0..EXIT_BPS_MAX, operator-set).
     fn view_bank(&self) -> Result<CallResponse> {
         let context = self.context()?;
         let mut response = CallResponse::forward(&context.incoming_alkanes);
-        let mut out = Vec::with_capacity(48);
+        let mut out = Vec::with_capacity(64);
         out.extend_from_slice(&read_u128(ptr("/bank")).to_le_bytes());
         out.extend_from_slice(&read_u128(ptr("/total_shares")).to_le_bytes());
         out.extend_from_slice(&read_u128(ptr("/fee_accum")).to_le_bytes());
+        out.extend_from_slice(&exit_bps().to_le_bytes());
         response.data = out;
         Ok(response)
     }
@@ -765,18 +817,21 @@ pub trait CheekyBrickyBase: AlkaneResponder {
     }
 
     /// Immutable config: `(min_bet, edge_bps, t_min, t_max, token_block,
-    /// token_tx)` as 6×u128 LE (96 bytes).
+    /// token_tx, exit_bps_max)` as 7×u128 LE (112 bytes). `exit_bps_max` is the
+    /// hard 2% ceiling on the (mutable) exit fee — read the live fee from
+    /// `ViewBank` field 4.
     fn view_config(&self) -> Result<CallResponse> {
         let context = self.context()?;
         let mut response = CallResponse::forward(&context.incoming_alkanes);
         let token = bet_token().unwrap_or(AlkaneId { block: 0, tx: 0 });
-        let mut out = Vec::with_capacity(96);
+        let mut out = Vec::with_capacity(112);
         out.extend_from_slice(&MIN_BET.to_le_bytes());
         out.extend_from_slice(&EDGE_BPS.to_le_bytes());
         out.extend_from_slice(&T_MIN.to_le_bytes());
         out.extend_from_slice(&t_max(EDGE_BPS).to_le_bytes());
         out.extend_from_slice(&token.block.to_le_bytes());
         out.extend_from_slice(&token.tx.to_le_bytes());
+        out.extend_from_slice(&EXIT_BPS_MAX.to_le_bytes());
         response.data = out;
         Ok(response)
     }

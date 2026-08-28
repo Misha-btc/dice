@@ -80,12 +80,19 @@ pub enum CheekyBrickyMessage {
     #[opcode(5)]
     Donate { amount: u128 },
 
-    /// Operator-only: withdraw this table's accrued 2% LP-exit fees (in the bet
+    /// Operator-only: withdraw this table's accrued LP-exit fees (in the bet
     /// token) to the caller. Requires the hardcoded operator auth key
     /// (`OPERATOR_AUTH_ID`) in the inputs — spent-and-returned, so one key
     /// drains every table. Reverts on a missing key or a zero balance.
     #[opcode(6)]
     WithdrawFees,
+
+    /// Operator-only: set this table's live LP-exit fee to `bps` (0..=200).
+    /// Reverts if it exceeds 200 (the 2% ceiling is immutable — even the
+    /// operator can never make exits cost more than 2%). Requires the operator
+    /// auth key (returned). `bps = 0` = free exits.
+    #[opcode(7)]
+    SetExitFee { bps: u128 },
 
     /// Standard fungible-token name — wallets probe this (shares live in
     /// wallets, so the 99/100 convention is load-bearing).
@@ -98,7 +105,7 @@ pub enum CheekyBrickyMessage {
     #[returns(String)]
     GetSymbol,
 
-    /// View: `(bank, total_shares, fee_accum)` 3×u128 LE.
+    /// View: `(bank, total_shares, fee_accum, exit_bps)` 4×u128 LE.
     #[opcode(101)]
     #[returns(Vec<u8>)]
     ViewBank,
@@ -108,8 +115,9 @@ pub enum CheekyBrickyMessage {
     #[returns(Vec<u8>)]
     ViewStats,
 
-    /// View: `(min_bet, edge_bps, t_min, t_max, token_block, token_tx)`
-    /// 6×u128 LE — every game parameter, no frontend hardcoding.
+    /// View: `(min_bet, edge_bps, t_min, t_max, token_block, token_tx,
+    /// exit_bps_max)` 7×u128 LE — immutable game parameters incl. the 2% exit-fee
+    /// ceiling (the live fee is ViewBank field 4).
     #[opcode(103)]
     #[returns(Vec<u8>)]
     ViewConfig,

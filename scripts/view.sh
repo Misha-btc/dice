@@ -5,9 +5,9 @@
 # varint parsing (single-byte length reads corrupt responses ≥ 128 bytes).
 #
 # Usage:
-#   ./scripts/view.sh bank              # (bank, total_shares, fee_accum)
+#   ./scripts/view.sh bank              # (bank, total_shares, fee_accum, exit_bps)
 #   ./scripts/view.sh stats             # (total_bets, total_wagered, total_won)
-#   ./scripts/view.sh config            # (min_bet, edge, kelly, t_min, t_max, token)
+#   ./scripts/view.sh config            # (min_bet, edge, t_min, t_max, token, exit_bps_max)
 #   ./scripts/view.sh max-bet <target>  # (max_bet, max_net_profit) at current bank
 #   ./scripts/view.sh table-of <b> <t>  # canonical table for token b:t (zeros = none)
 
@@ -136,9 +136,9 @@ def u128_le(b):
     return int.from_bytes(b[:16], "little")
 
 LABELS = {
-    "bank":    ["bank", "total_shares", "fee_accum"],
+    "bank":    ["bank", "total_shares", "fee_accum", "exit_bps"],
     "stats":   ["total_bets", "total_wagered", "total_won"],
-    "config":  ["min_bet", "edge_bps", "t_min", "t_max", "token_block", "token_tx"],
+    "config":  ["min_bet", "edge_bps", "t_min", "t_max", "token_block", "token_tx", "exit_bps_max"],
     "max-bet": ["max_bet", "max_net_profit"],
     "table-of": ["table_block", "table_tx"],
 }
