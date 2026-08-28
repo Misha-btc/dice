@@ -83,8 +83,15 @@ pub const BLOCK_BUDGET_BPS: u128 = 2_000;
 /// a ~1% edge). Defines `t_max(edge)`.
 pub const MIN_WIN_MULT_BPS: u128 = 10_100;
 
-/// Tightest allowed target: ≈1% win chance (max multiplier ≈ ×98.9).
-pub const T_MIN: u128 = 656;
+/// Tightest allowed target: `1` — win chance `1/65536 ≈ 0.0015%`, the maximum
+/// multiplier `≈ ×64880` at the 1% edge (the SatoshiDice-style "lessthan 1"
+/// longshot ceiling). The bank is NOT exposed by opening this end: the per-bet
+/// half-Kelly cap auto-shrinks the stake so `net_exposure ≤ 0.5%` of the bank
+/// at ANY multiplier. Extreme targets are simply unplayable until the bank is
+/// large enough — the clamped stake would fall below `MIN_BET`, which reverts
+/// cleanly (see the game's `roll`). Only `target = 0` (zero win chance) is
+/// rejected.
+pub const T_MIN: u128 = 1;
 
 /// ERC-4626-style virtual offset: pricing behaves as if `VIRTUAL_SHARES`
 /// shares and `VIRTUAL_BANK` bank units always exist. First real deposit
@@ -353,6 +360,9 @@ mod tests {
         assert_eq!(payout_total(1_000_000, 32_768, E0), 1_980_000);
         // Longshot: T = 656 → ×≈98.9.
         assert_eq!(payout_total(1_000_000, 656, E0), 98_903_414);
+        // Extreme longshot: T = 1 (= T_MIN, ~0.0015% chance) → ×≈64880 — the
+        // SatoshiDice-style ceiling. Stake is Kelly-clamped to dust in practice.
+        assert_eq!(payout_total(1_000_000, 1, E0), 64_880_640_000);
         // Grind ceiling: T = t_max(100) = 64_238 → ×≈1.0100 (the 98% end).
         assert_eq!(t_max(E0), 64_238);
         assert_eq!(payout_total(1_000_000, 64_238, E0), 1_010_004);
@@ -434,10 +444,16 @@ mod tests {
                         net_exposure(b, target, edge) <= cap,
                         "edge {edge} bank {bank} target {target}: max_bet busts the cap"
                     );
-                    assert!(
-                        net_exposure(b * 2, target, edge) > cap,
-                        "edge {edge} bank {bank} target {target}: max_bet far too small"
-                    );
+                    // Tightness only applies when a bet is actually possible.
+                    // At an extreme multiplier vs a small bank, max_bet floors
+                    // to 0 (target unplayable until the bank grows) — correct,
+                    // and there is nothing to be "too small" about.
+                    if b > 0 {
+                        assert!(
+                            net_exposure(b * 2, target, edge) > cap,
+                            "edge {edge} bank {bank} target {target}: max_bet far too small"
+                        );
+                    }
                 }
             }
         }

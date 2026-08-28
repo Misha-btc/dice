@@ -264,8 +264,8 @@ fn test_min_amount_floor_reverts_a_clamp() -> Result<()> {
 fn test_bad_target_and_dust_bet_revert() -> Result<()> {
     let (bank_op, leftover, mut h) = setup_with_bank(BANK)?;
 
-    // Target below T_MIN.
-    let (block, _) = build_roll(h, bank_op, leftover, 100, 1_000_000, 0);
+    // Target 0 — the only value below T_MIN (=1); zero win chance, rejected.
+    let (block, _) = build_roll(h, bank_op, leftover, 0, 1_000_000, 0);
     index_block(&block, h)?;
     let out = op_outpoint(&block);
     assert_eq!(diesel_at(&out), leftover, "bad target: full refund");

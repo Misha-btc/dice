@@ -98,7 +98,11 @@ EDGE_BPS  = 100          // 1%, FIXED FOREVER — ALL of it accrues to LPs (no h
 BLOCK_BUDGET_BPS = 2000  // Σ realized net payouts per block ≤ 20% of bank (miner defense)
 MIN_WIN_MULT_BPS = 10_100 // win must pay ≥ ×1.01 → t_max = 64_238 (≈98% chance,
                           // the classic dice-slider ceiling)
-T_MIN     = 656          // ≈1% chance; max multiplier ≈ ×98.9
+T_MIN     = 1            // win chance 1/65536 ≈ 0.0015%; MAX multiplier ≈ ×64880
+                         // (SatoshiDice-style "lessthan 1" ceiling). Safe because the
+                         // half-Kelly cap auto-shrinks the stake at extreme multipliers —
+                         // extreme targets just floor to a dust/0 max bet on a small bank
+                         // (clamped < MIN_BET → clean revert). Only target 0 is rejected.
 VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share revert)
 ```
 

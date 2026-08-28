@@ -63,10 +63,15 @@ Runtime support confirmed: `alkanes-runtime` exposes `block_header()` and
   - Payout multiplier `m = (10_000 − edge_bps)/10_000 · 65536/T` (total
     returned incl. stake), computed with `mul_div`, floor — rounding always
     favors the bankroll.
-  - `T_MIN = 656` (≈1% chance, ×98.9); the ceiling `t_max` is the loosest T
-    whose multiplier still beats the stake by ≥ ×1.01
-    (`MIN_WIN_MULT_BPS = 10_100`) — at the 1% edge that is **64 238 (≈98%
-    chance, ×1.0100)**, the classic dice-slider range.
+  - `T_MIN = 1` (win chance `1/65536 ≈ 0.0015%`, **max multiplier ≈ ×64880** —
+    the SatoshiDice-style "lessthan 1" longshot ceiling; only `target = 0` is
+    rejected). The ceiling `t_max` is the loosest T whose multiplier still beats
+    the stake by ≥ ×1.01 (`MIN_WIN_MULT_BPS = 10_100`) — at the 1% edge that is
+    **64 238 (≈98% chance, ×1.0100)**. Opening the longshot end costs the bank
+    nothing: the Kelly cap (below) auto-shrinks the stake so `net_exposure` never
+    exceeds 0.5% of the bank at ANY multiplier; extreme targets simply floor to a
+    dust (or 0) max bet until the bank is large enough, and a clamped bet below
+    `MIN_BET` reverts cleanly.
 - **Lose**: the bet joins `/bank`. **Win**: `m·bet` paid from `/bank` to the
   bettor's output 0.
 
@@ -104,8 +109,9 @@ What this buys, stated honestly:
 
 Worked example, bank = $2000 (cap = $10):
 ×1.98 coinflip → max bet ≈ $10.2; ×9.9 → ≈ $1.12; ×98.9 longshot → ≈ $0.10;
-the ×1.01 grind end (98% chance) allows ≈ $1000 (the bank only risks the
-thin margin) — the high-probability slider end is the volume machine.
+the ×64880 extreme → max bet ≈ $0.00015 (dust — playable only once the bank is
+much larger); the ×1.01 grind end (98% chance) allows ≈ $1000 (the bank only
+risks the thin margin) — the high-probability slider end is the volume machine.
 
 ### Clamp, don't revert (+ the per-block budget)
 
