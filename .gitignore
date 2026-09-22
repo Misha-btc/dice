@@ -6,3 +6,14 @@
 /src/tests/wasm/*.wasm
 
 # Cargo.lock IS tracked (immutable contract → reproducible builds) — do not ignore it.
+
+# Any stray compiled artifacts / local junk
+*.wasm
+*.log
+*.swp
+*.swo
+.env
+.env.*
+.idea/
+.vscode/
+node_modules/
