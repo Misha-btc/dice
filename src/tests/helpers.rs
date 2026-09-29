@@ -315,3 +315,46 @@ pub fn create_operation_block(
     block.txdata.push(tx);
     block
 }
+
+/// One tx that spends `input_outpoint` and carries the given protostones verbatim
+/// (their own pointers / refunds / edicts). Outputs are [recipient, OP_RETURN], so
+/// protostone `i` sits at shadow vout `2 + 1 + i` — point one call at the next to
+/// chain them inside the same transaction.
+pub fn create_op_block_with_protostones(
+    height: u32,
+    input_outpoint: OutPoint,
+    protostones: Vec<Protostone>,
+) -> Block {
+    let mut block = create_block_with_coinbase_tx(height);
+    let runestone: ScriptBuf = (Runestone {
+        etching: None,
+        pointer: Some(0),
+        edicts: Vec::new(),
+        mint: None,
+        protocol: protostones.encipher().ok(),
+    })
+    .encipher();
+    let address: bitcoin::address::Address<bitcoin::address::NetworkChecked> =
+        get_address(&ADDRESS1().as_str());
+    block.txdata.push(Transaction {
+        version: bitcoin::blockdata::transaction::Version::ONE,
+        lock_time: bitcoin::absolute::LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: input_outpoint,
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::MAX,
+            witness: Witness::new(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(100_000_000),
+                script_pubkey: address.script_pubkey(),
+            },
+            TxOut {
+                value: Amount::from_sat(0),
+                script_pubkey: runestone,
+            },
+        ],
+    });
+    block
+}

@@ -167,6 +167,7 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 /paid_this_block   u128  (Σ realized net payouts at last_win_height)
 /exit_bps          u128  (live LP-exit fee 0..200; operator-set via SetExitFee, init=200)
 /fee_accum         u128  (accrued LP-exit fees, bet-token; paid out by WithdrawFees)
+/last_roll_txid    [u8; 32] (txid of the last Roll on this table — one Roll per tx)
 /total_bets, /total_wagered, /total_won   u128  (stats)
 ```
 
@@ -188,9 +189,13 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
    walk the routed-DIESEL amount to flip the predicted outcome
    (`roll_test::build_roll_forced`). Every forced test doubles as an
    entropy-equivalence proof between test-side math and the contract.
-5. **Multiple bets in one tx share one roll** (same blockhash+txid). This is fair
-   (all bets are monotone roll-under, no arbitrage) but correlated — the frontend
-   should discourage it. Not contract-enforced.
+5. **One Roll per transaction per table — contract-enforced.** Every Roll in a tx
+   would read the same `sha256(blockhash ‖ txid)`, so N stacked Rolls are one
+   correlated bet of N× the size: the per-bet Kelly cap binds per call, not per
+   roll, and only the 20% block budget would be left (≥3 stacked max bets already
+   make the bank's log-drift negative). The table stores `/last_roll_txid` and a
+   second Roll from the same tx reverts (full refund). Separate txs in the same
+   block are unaffected; mint-and-roll is one Roll, so it is unaffected too.
 6. **A win can revert on the per-block cap** if earlier wins in the same block
    drained it: the bet refunds in full and can be re-sent next block. This is the
    miner-stuffing defense working as intended, not a bug.
@@ -201,6 +206,8 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 
 - **Roll is top-level-only**: `context.caller == {0,0}` or revert — the
   flash/atomic-revert guard. Wrapper alkanes can't filter losses.
+- **One Roll per transaction per table**: `/last_roll_txid == txid` or revert —
+  stacked Rolls in one tx would share one roll and dodge the per-bet Kelly cap.
 - **One-shot init** (`/initialized`), **bet token ≠ self**, **one table per
   token** (registry), **the only privileged ops are `WithdrawFees` and
   `SetExitFee`** (both auth-gated; they only touch fee revenue, never the bank or
@@ -220,14 +227,15 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
   + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
   1000-consecutive-wins survival, share pricing (virtual offset, round-trip,
   solvency fuzz, inflation-attack unprofitability), mul_div 256-bit.
-- **Integration (25, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+- **Integration (26, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
   98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)
   (`lp_test`); exit fee — accrue on withdraw → operator collects via auth-gated
   `WithdrawFees` (keyless attempt reverts; empty-fee reverts and refunds the key);
   **`SetExitFee` lowers the cut (1% nets 99%), 0 = free exit, > 200 reverts,
   keyless reverts** (`exit_fee_test`);
-  forced win/lose settlement, `amount=0` bets-everything sentinel,
+  forced win/lose settlement, **a second Roll in the same tx reverts (one Roll per
+  tx, full refund)**, `amount=0` bets-everything sentinel,
   oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust
   rejections, ViewMaxBet vs math, LP appreciation after losses (`roll_test`);
   factory clone independence + per-clone identity, re-init + table registry (`factory_test`); contract-wrapped Roll rejected while top-level accepted (`flash_attack_test`); per-opcode fuel ≤ 3.5M floor incl. CreateTable ≈ 19% (`fuel_audit_test`); two same-block wins + full-withdraw→dormant→revive (`scenario_test`).

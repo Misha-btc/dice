@@ -336,6 +336,21 @@ path is proven by `flash_attack_test` — a test-only `cheeky-bricky-attacker`
 alkane forwards a Roll from its own contract context and the call reverts
 (no bet recorded, bank untouched, DIESEL refunded).
 
+### One Roll per transaction
+
+Every Roll in a transaction reads the same `sha256(blockhash ‖ txid)`, so N Roll
+protostones in one tx are not N independent bets but ONE perfectly correlated
+bet of N× the size. The full-Kelly cap is enforced per call, not per roll, so
+stacking would leave only the 20% block budget as the limit — and at ≥3 stacked
+max bets the bank's expected log-growth already turns negative. The table
+therefore stores the txid of its last Roll (`/last_roll_txid`) and a second Roll
+from the same transaction reverts with a full refund. Separate transactions,
+even in the same block, roll independently (different txid) and are unaffected;
+mint-and-roll is a single Roll and is unaffected. Proven by
+`roll_test::test_second_roll_in_the_same_tx_reverts` (the first Roll points its
+change into a second Roll of the same tx; only one bet settles, the rest is
+refunded).
+
 ## Decisions taken at implementation
 
 2026-08-25:

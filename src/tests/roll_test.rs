@@ -13,8 +13,8 @@
 use crate::test_log;
 use crate::tests::foundation::{deploy_cheeky_bricky, game_id, mint_diesel, MIN_BET};
 use crate::tests::helpers::{
-    clear_test_environment, create_op_block_with_token_input, get_sheet_by_outpoint, index_block,
-    Cellpack, OutPoint, DIESEL_ID,
+    clear_test_environment, create_op_block_with_protostones, create_op_block_with_token_input,
+    get_sheet_by_outpoint, index_block, Cellpack, OutPoint, Protostone, DIESEL_ID,
 };
 use anyhow::Result;
 use bitcoin::hashes::Hash;
@@ -318,5 +318,51 @@ fn test_shares_price_appreciates_after_losses() -> Result<()> {
         value_now,
         BANK
     );
+    Ok(())
+}
+
+/// One Roll per transaction per table. Two Roll protostones in one tx share one
+/// roll (same blockhash ‖ txid), so stacking them turns several capped bets into
+/// ONE perfectly correlated bet — the per-bet full-Kelly cap is sidestepped up to
+/// the 20% block budget (≥3 stacked max bets already push the bank's log-drift
+/// negative). The second Roll must revert, and its stake must come back in full.
+#[test]
+fn test_second_roll_in_the_same_tx_reverts() -> Result<()> {
+    let (bank_op, leftover, h) = setup_with_bank(BANK)?;
+    let amount = 1_000_000u128;
+    let target = 32_768u128;
+
+    let roll = |inputs: Vec<u128>, pointer: u32| Protostone {
+        message: Cellpack { target: game_id(), inputs }.encipher(),
+        pointer: Some(pointer),
+        refund: Some(0),
+        edicts: vec![],
+        from: None,
+        burn: None,
+        protocol_tag: 1,
+    };
+    // Protostone 0 gets every input DIESEL, bets `amount`, and points its change
+    // (plus the payout on a win) at protostone 1 (shadow vout 3 + 1 = 4), which
+    // tries to bet all of it on the very same roll.
+    let block = create_op_block_with_protostones(
+        h,
+        bank_op,
+        vec![roll(vec![OP_ROLL, target, amount, 0], 4), roll(vec![OP_ROLL, target, 0, 0], 0)],
+    );
+    index_block(&block, h)?;
+
+    let s = call_view(VIEW_STATS);
+    assert_eq!(s[0], 1, "only the first Roll of the tx settled");
+    assert_eq!(s[1], amount, "the second stake never reached the bank");
+    let payout = if s[2] > 0 { payout_total(amount, target, E) } else { 0 };
+    assert_eq!(s[2], payout);
+    let v = call_view(VIEW_BANK);
+    assert_eq!(v[0], BANK + amount - payout, "the bank saw exactly one bet");
+    assert_eq!(
+        diesel_at(&op_outpoint(&block)),
+        leftover - amount + payout,
+        "the refused second bet was refunded in full to vout 0"
+    );
+    test_log!("[ROLL] second Roll in one tx refused (first one {})", if payout > 0 { "won" } else { "lost" });
     Ok(())
 }

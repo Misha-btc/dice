@@ -37,7 +37,9 @@ pub enum CheekyBrickyMessage {
     /// reverts instead if the clamp falls below it (`0` = accept any size).
     /// `amount = 0` bets EVERYTHING sent — the mint-and-roll flow: chain
     /// `[free mint] → [Roll(target, 0)]` in one tx and the roll takes the
-    /// whole mint, whatever size it turns out to be. Payable in the bet
+    /// whole mint, whatever size it turns out to be. ONE Roll per transaction
+    /// per table: a second Roll in the same tx would share the same roll, so
+    /// it reverts (full refund). Payable in the bet
     /// token. Response data: `(roll, win, payout, effective_amount)` 4×u128 LE.
     #[opcode(1)]
     Roll {

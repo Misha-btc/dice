@@ -380,6 +380,21 @@ pub trait CheekyBrickyBase: AlkaneResponder {
                 "Roll must be a direct transaction, not a contract call (flash-attack guard)"
             ));
         }
+        // ONE ROLL PER TX (critical, immutable): every Roll in a transaction
+        // reads the same sha256(blockhash ‖ txid), so N Roll protostones in one
+        // tx are ONE perfectly correlated bet of N× the size. The full-Kelly cap
+        // binds per call, not per roll, so stacking would leave only the 20%
+        // block budget as the limit (≥3 stacked max bets already push the
+        // bank's log-drift negative). Remember the last txid that rolled on
+        // this table and refuse a second one; the reverted protostone refunds
+        // in full. Separate txs — even in the same block — are unaffected.
+        let txid = self.transaction_id()?.as_raw_hash().to_byte_array();
+        if ptr("/last_roll_txid").get().as_slice() == txid.as_slice() {
+            return Err(anyhow!(
+                "one Roll per transaction: this tx already rolled on this table (bets in one tx would share one roll)"
+            ));
+        }
+
         let edge = EDGE_BPS;
         validate_target(target, edge)?;
 
@@ -450,11 +465,11 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         // unknown to everyone until the block is mined (ord#4541 recipe).
         let header = self.block_header()?;
         let blockhash = header.block_hash().as_raw_hash().to_byte_array();
-        let txid = self.transaction_id()?.as_raw_hash().to_byte_array();
         let r = roll_entropy(&blockhash, &txid);
         let win = is_win(r, target);
 
         // Bookkeeping.
+        ptr("/last_roll_txid").set(Arc::new(txid.to_vec()));
         let bets_key = ptr("/total_bets");
         write_u128(bets_key.clone(), read_u128(bets_key).saturating_add(1));
         let wag_key = ptr("/total_wagered");
