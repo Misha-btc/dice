@@ -11,7 +11,10 @@ use crate::tests::helpers::{
 };
 use anyhow::Result;
 use bitcoin::hashes::Hash;
-use cheeky_bricky_math::{block_budget, is_win, max_bet, payout_total, shares_for_deposit, withdraw_payout, EDGE_BPS};
+use cheeky_bricky_math::{
+    block_budget, is_win, max_amount_for_exposure, max_bet, max_net_profit, payout_total, shares_for_deposit,
+    t_max, withdraw_payout, EDGE_BPS,
+};
 
 const OP_ROLL: u128 = 1;
 const OP_DEPOSIT: u128 = 2;
@@ -203,5 +206,76 @@ fn test_full_withdraw_then_revive() -> Result<()> {
     index_block(&roll2, h)?;
     assert_eq!(call_view(VIEW_STATS)[0], 1, "revived table accepts bets again");
     test_log!("[SCENARIO] withdraw → dormant → revive → play OK");
+    Ok(())
+}
+
+/// Chain rolls inside ONE block: each bet is the largest the caps allow at that
+/// moment (so nothing clamps), outcomes are forced per `plan` (want_win, target),
+/// and bank / budget are tracked with the math crate exactly as the contract
+/// does. Stops when the caps leave less than a min bet. Indexes the block and
+/// checks the contract agrees. Returns (bank at block start, bank at block end,
+/// net wins paid in the block).
+fn one_block_of_rolls(bank0: u128, plan: &[(bool, u128)]) -> Result<(u128, u128, u128)> {
+    let (mut input, mut avail, h) = setup_bank(bank0)?;
+    let (mut bank, mut paid, mut net_wins) = (bank0, 0u128, 0u128);
+    let mut txs = Vec::new();
+    let mut last: Option<Block> = None;
+    for &(want, target) in plan {
+        let allowed = max_net_profit(bank, E).min(block_budget(bank).saturating_sub(paid));
+        let bet = max_amount_for_exposure(allowed, target, E);
+        if bet < MIN_BET {
+            break;
+        }
+        let (b, _) = forced_win(h, input, avail, target, bet, want);
+        if want {
+            let payout = payout_total(bet, target, E);
+            bank = bank + bet - payout;
+            paid += payout - bet;
+            net_wins += payout - bet;
+            avail = avail - bet + payout;
+        } else {
+            bank += bet;
+            avail -= bet;
+        }
+        input = OutPoint { txid: b.txdata[1].compute_txid(), vout: 0 };
+        txs.push(b.txdata[1].clone());
+        last = Some(b);
+    }
+    // every tx was built against the same height-h header, so they share one block hash
+    let mut block = last.expect("at least one roll");
+    let coinbase = block.txdata[0].clone();
+    block.txdata = std::iter::once(coinbase).chain(txs.iter().cloned()).collect();
+    index_block(&block, h)?;
+    assert_eq!(call_view(VIEW_STATS)[0], txs.len() as u128, "every roll in the block settled");
+    assert_eq!(call_view(VIEW_BANK)[0], bank, "the contract's bank matches the math");
+    Ok((bank0, bank, net_wins))
+}
+
+/// Max wins back to back in one block until the per-block budget runs out: the
+/// bank ends at no less than 80% of where the block started — the bound is tight.
+#[test]
+fn test_block_of_max_wins_keeps_80_percent_of_the_bank() -> Result<()> {
+    let plan = vec![(true, 32_768u128); 40];
+    let (b0, b1, won) = one_block_of_rolls(20_000_000, &plan)?;
+    assert!(b1 * 10 >= b0 * 8, "bank fell below 80% of the block start: {} → {}", b0, b1);
+    assert!(won * 10 <= b0 * 2, "net wins passed 20% with no losses in the block");
+    assert!(b1 * 100 < b0 * 85, "the budget should be close to exhausted (tight bound)");
+    test_log!("[SCENARIO] max wins in one block: bank {} → {} (won {})", b0, b1, won);
+    Ok(())
+}
+
+/// Wins, then a big loss, then wins, all in one block. The budget is recomputed
+/// from the grown bank, so net wins in the block exceed 20% of the start bank
+/// (external audit, 2026-09-30) — paid only out of the same-block loss: the bank
+/// still ends above 80% of its start.
+#[test]
+fn test_losses_in_the_block_fund_extra_wins_but_the_bank_keeps_80_percent() -> Result<()> {
+    let mut plan = vec![(true, 32_768u128), (true, 32_768)];
+    plan.push((false, t_max(E))); // a ~98% bet sized to the cap: roughly the whole bank, lost
+    plan.extend(std::iter::repeat((true, 32_768u128)).take(60));
+    let (b0, b1, won) = one_block_of_rolls(20_000_000, &plan)?;
+    assert!(won * 10 > b0 * 2, "net wins should pass 20% of the start bank here: {} of {}", won, b0);
+    assert!(b1 * 10 >= b0 * 8, "bank fell below 80% of the block start: {} → {}", b0, b1);
+    test_log!("[SCENARIO] loss-funded wins in one block: bank {} → {} (won {})", b0, b1, won);
     Ok(())
 }

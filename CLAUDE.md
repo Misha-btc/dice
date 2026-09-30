@@ -230,7 +230,7 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
   wrapping: a quotient past u128 is refused (`mul_div_checked`), an oversized
   deposit into an empty table is refused, an overflowing payout is unbounded
   exposure so the clamp still holds**.
-- **Integration (26, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+- **Integration (28, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
   98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)
   (`lp_test`); exit fee — accrue on withdraw → operator collects via auth-gated
@@ -241,7 +241,7 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
   tx, full refund)**, `amount=0` bets-everything sentinel,
   oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust
   rejections, ViewMaxBet vs math, LP appreciation after losses (`roll_test`);
-  factory clone independence + per-clone identity, re-init + table registry (`factory_test`); contract-wrapped Roll rejected while top-level accepted (`flash_attack_test`); per-opcode fuel ≤ 3.5M floor incl. CreateTable ≈ 19% (`fuel_audit_test`); two same-block wins + full-withdraw→dormant→revive (`scenario_test`).
+  factory clone independence + per-clone identity, re-init + table registry (`factory_test`); contract-wrapped Roll rejected while top-level accepted (`flash_attack_test`); per-opcode fuel ≤ 3.5M floor incl. CreateTable ≈ 19% (`fuel_audit_test`); two same-block wins, **a block of max wins ends ≥ 80% of its start bank, and loss-funded wins above 20% still keep ≥ 80%**, full-withdraw→dormant→revive (`scenario_test`).
 
 ## Relationship to arbuzino
 

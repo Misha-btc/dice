@@ -140,13 +140,19 @@ it, revert with a full refund. Hard reverts remain only for bad target, dust
 recomputed from the *current* bank on every Roll, and a losing bet grows the
 bank, so the gross net-wins paid inside one block can exceed 20% of the bank
 it started the block with — but only out of losses that landed in that same
-block. The invariant that matters holds exactly: **within one block the bank
-never falls below 80% of its start-of-block value.** Proof: every win settles
+block. The invariant that matters holds exactly: **within one block, Rolls
+never take the bank below 80% of its start-of-block value.** The bound is about
+what players can take: Deposit and Donate only add to the bank, and an LP
+Withdraw takes the LP's own share out (not a payout), so those are outside it
+— the proof below is over the Rolls of a block. Proof: every win settles
 only if `paid_this_block + exposure ≤ 0.2 · bank_now`, and
 `bank_now = B₀ + L − W_prev` (losses so far `L ≥ 0`, earlier wins `W_prev`), so
 after the last win `W ≤ 0.2 · (B₀ + L − W_prev)` and the end-of-block bank
 `B₀ + L − W ≥ 0.8 · (B₀ + L) + 0.2 · W_prev ≥ 0.8 · B₀`. A 200k-block
-simulation of random loss/max-win orderings bottoms out at 0.87 · B₀. Freezing
+simulation of random loss/max-win orderings bottoms out at 0.87 · B₀, and two
+integration tests chain real Rolls in one block (`scenario_test`): max wins until
+the budget runs out end at 0.83 · B₀; wins → a ~bank-sized loss → wins pay out
+0.33 · B₀ net (above 20%, funded by the loss) and still end above B₀. Freezing
 the budget at the block's first bet would only shrink capacity, so it stays as is.
 
 ### Two play modes: free roll (mint-and-roll) and a regular bet
