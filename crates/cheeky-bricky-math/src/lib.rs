@@ -169,9 +169,14 @@ pub fn payout_total(amount: u128, target: u128, edge_bps: u128) -> u128 {
 }
 
 /// What the bank risks losing on a win: payout minus the stake (the whole
-/// bet reaches the bank — no fee carve-out).
+/// bet reaches the bank — no fee carve-out). A payout that does not fit u128
+/// is unbounded exposure (`u128::MAX`), so the Roll clamp resizes such a bet
+/// down to the cap and pays it exactly, instead of settling a saturated payout.
 pub fn net_exposure(amount: u128, target: u128, edge_bps: u128) -> u128 {
-    payout_total(amount, target, edge_bps).saturating_sub(amount)
+    match mul_div_checked(amount, payout_num(edge_bps), BPS * target) {
+        Some(payout) => payout.saturating_sub(amount),
+        None => u128::MAX,
+    }
 }
 
 /// The full-Kelly per-bet cap: max allowed net player profit =
@@ -209,14 +214,22 @@ pub fn max_bet(bank: u128, target: u128, edge_bps: u128) -> u128 {
 
 /// Shares minted for depositing `amount` into `(bank, total_shares)`:
 /// `floor(amount · (S + VIRTUAL_SHARES) / (B + VIRTUAL_BANK))`. Bootstrap
-/// (empty vault) mints `amount · 10^6`. The contract must reject a zero
-/// result (deposit too small at the current share price).
-pub fn shares_for_deposit(amount: u128, bank: u128, total_shares: u128) -> u128 {
-    mul_div(
+/// (empty vault) mints `amount · 10^6`. `None` when the result does not fit
+/// `u128` (a deposit above ~3.4·10^32 units into an empty table) — the
+/// contract must revert then, and also reject a zero result (deposit too
+/// small at the current share price).
+pub fn try_shares_for_deposit(amount: u128, bank: u128, total_shares: u128) -> Option<u128> {
+    mul_div_checked(
         amount,
-        total_shares + VIRTUAL_SHARES,
-        bank + VIRTUAL_BANK,
+        total_shares.checked_add(VIRTUAL_SHARES)?,
+        bank.checked_add(VIRTUAL_BANK)?,
     )
+}
+
+/// [`try_shares_for_deposit`] for UI math: saturates at `u128::MAX` instead
+/// of `None` (the contract reverts in that case).
+pub fn shares_for_deposit(amount: u128, bank: u128, total_shares: u128) -> u128 {
+    try_shares_for_deposit(amount, bank, total_shares).unwrap_or(u128::MAX)
 }
 
 /// Bet-token paid for burning `shares` against `(bank, total_shares)`:
@@ -226,26 +239,37 @@ pub fn shares_for_deposit(amount: u128, bank: u128, total_shares: u128) -> u128 
 pub fn withdraw_payout(shares: u128, bank: u128, total_shares: u128) -> u128 {
     mul_div(
         shares,
-        bank + VIRTUAL_BANK,
-        total_shares + VIRTUAL_SHARES,
+        bank.saturating_add(VIRTUAL_BANK),
+        total_shares.saturating_add(VIRTUAL_SHARES),
     )
 }
 
 // ---------- mul_div (256-bit exact) ----------
 
 /// Compute `floor(a * b / d)` exactly via a 256-bit intermediate so `a * b`
-/// never overflows `u128`. The true quotient is assumed to fit in `u128` (it
-/// does at every call site here). Returns `u128::MAX` on `d == 0` as a
-/// panic-free guard — no caller passes `d == 0`.
-pub fn mul_div(a: u128, b: u128, d: u128) -> u128 {
+/// never overflows `u128`. `None` when `d == 0` or when the true quotient
+/// does not fit in `u128` — never a wrapped value.
+pub fn mul_div_checked(a: u128, b: u128, d: u128) -> Option<u128> {
     if d == 0 {
-        return u128::MAX;
+        return None;
     }
     if let Some(p) = a.checked_mul(b) {
-        return p / d;
+        return Some(p / d);
     }
     let (hi, lo) = mul_u128_wide(a, b);
-    div_u256_by_u128(hi, lo, d)
+    // (hi·2^128 + lo) / d ≥ 2^128  ⇔  hi ≥ d  (lo < 2^128)
+    if hi >= d {
+        return None;
+    }
+    Some(div_u256_by_u128(hi, lo, d))
+}
+
+/// [`mul_div_checked`] saturating at `u128::MAX` (also for `d == 0`, a
+/// panic-free guard no caller hits). Saturating, not wrapping: an oversized
+/// payout reads as "exposure too large" and the Roll clamp resizes the bet
+/// down; share minting uses the checked form and reverts instead.
+pub fn mul_div(a: u128, b: u128, d: u128) -> u128 {
+    mul_div_checked(a, b, d).unwrap_or(u128::MAX)
 }
 
 /// Full 256-bit product of two `u128`s as `(high, low)` 128-bit limbs.
@@ -707,6 +731,53 @@ mod tests {
     #[test]
     fn mul_div_no_overflow_on_huge_product() {
         assert_eq!(mul_div(u128::MAX, 4, 8), (1u128 << 127) - 1);
+    }
+
+    #[test]
+    fn mul_div_refuses_a_quotient_past_u128_instead_of_wrapping() {
+        // 2^127 · 2 / 1 = 2^128: one past u128::MAX — used to wrap to 0.
+        assert_eq!(mul_div_checked(1u128 << 127, 2, 1), None);
+        assert_eq!(mul_div(1u128 << 127, 2, 1), u128::MAX);
+        assert_eq!(mul_div_checked(u128::MAX, u128::MAX, 1), None);
+        // right at the edge it still fits exactly
+        assert_eq!(mul_div_checked(1u128 << 127, 2, 2), Some(1u128 << 127));
+        assert_eq!(mul_div_checked(u128::MAX, 3, 3), Some(u128::MAX));
+        assert_eq!(mul_div_checked(5, 5, 0), None);
+    }
+
+    #[test]
+    fn oversized_deposit_into_an_empty_table_is_refused() {
+        // empty table mints amount · 10^6 shares; past u128::MAX / 10^6 that
+        // no longer fits — it must be refused, not wrapped to a small number.
+        let edge = u128::MAX / VIRTUAL_SHARES;
+        assert_eq!(try_shares_for_deposit(edge, 0, 0), Some(edge * VIRTUAL_SHARES));
+        assert_eq!(try_shares_for_deposit(edge + 1, 0, 0), None);
+        assert_eq!(try_shares_for_deposit(1, 0, u128::MAX), None, "share supply at the ceiling");
+        assert_eq!(try_shares_for_deposit(1, u128::MAX, 0), None, "bank at the ceiling");
+    }
+
+    #[test]
+    fn huge_bet_payout_saturates_and_the_clamp_still_holds() {
+        // a payout past u128 reads as "too much exposure", never as a small wrapped
+        // number that would slip under the cap
+        assert_eq!(payout_total(u128::MAX, 1, E0), u128::MAX);
+        assert_eq!(net_exposure(u128::MAX, 1, E0), u128::MAX, "overflowing payout = unbounded exposure");
+        assert_eq!(net_exposure(u128::MAX - 5, 1, E0), u128::MAX);
+        for &bank in &[1_000_000u128, 10u128.pow(30), u128::MAX / 4] {
+            for &target in &[1u128, 656, 32_768, t_max(E0)] {
+                let cap = max_net_profit(bank, E0);
+                let bet = max_amount_for_exposure(cap, target, E0);
+                assert!(net_exposure(bet, target, E0) <= cap, "clamped bet exceeds the cap");
+                assert!(bank.checked_add(bet).is_some(), "a clamped bet settles without overflow");
+            }
+        }
+        // A bank at the very ceiling: the clamped bet itself can overflow the
+        // payout, but then `bank + bet` overflows too and the Roll reverts
+        // (checked_add) — it never settles a saturated payout.
+        let bank = u128::MAX - 1;
+        let target = t_max(E0);
+        let bet = max_amount_for_exposure(max_net_profit(bank, E0), target, E0);
+        assert!(net_exposure(bet, target, E0) <= max_net_profit(bank, E0) || bank.checked_add(bet).is_none());
     }
 
     #[test]

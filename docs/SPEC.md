@@ -136,6 +136,19 @@ opts into all-or-nothing with `min_amount`: if the clamped size falls below
 it, revert with a full refund. Hard reverts remain only for bad target, dust
 (`amount < min_bet`), underpayment, or capacity below `min_bet`/`min_amount`.
 
+**What the budget guarantees (external audit, 2026-09-30).** The budget is
+recomputed from the *current* bank on every Roll, and a losing bet grows the
+bank, so the gross net-wins paid inside one block can exceed 20% of the bank
+it started the block with — but only out of losses that landed in that same
+block. The invariant that matters holds exactly: **within one block the bank
+never falls below 80% of its start-of-block value.** Proof: every win settles
+only if `paid_this_block + exposure ≤ 0.2 · bank_now`, and
+`bank_now = B₀ + L − W_prev` (losses so far `L ≥ 0`, earlier wins `W_prev`), so
+after the last win `W ≤ 0.2 · (B₀ + L − W_prev)` and the end-of-block bank
+`B₀ + L − W ≥ 0.8 · (B₀ + L) + 0.2 · W_prev ≥ 0.8 · B₀`. A 200k-block
+simulation of random loss/max-win orderings bottoms out at 0.87 · B₀. Freezing
+the budget at the block's first bet would only shrink capacity, so it stays as is.
+
 ### Two play modes: free roll (mint-and-roll) and a regular bet
 
 `amount > 0` is the regular mode: bet a chosen amount from the wallet.
@@ -304,6 +317,28 @@ operator auth (separate contract, 4:0x7EA5):
 |--------|------|------|-------|
 | 0 | `Init` | — | one-time; mints 1 auth-key unit to the deployer |
 | 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky Operator" / "CBOP" (wallet convention) |
+
+## Arithmetic: nothing wraps
+
+`mul_div` computes `floor(a·b/d)` through a 256-bit intermediate. Its checked
+form `mul_div_checked` returns `None` when the true quotient does not fit u128
+(`hi ≥ d`) instead of the low 128 bits (external audit, 2026-09-30: the old
+version wrapped). Consequences:
+
+- **Deposit**: `try_shares_for_deposit` is checked end to end (the virtual
+  offsets are `checked_add`); a deposit whose share count would pass u128 —
+  above ~3.4·10^32 units into an empty table, reachable only with a
+  giant-supply token, and `CreateTable` is permissionless — **reverts**
+  instead of minting a wrapped count.
+- **Roll**: a payout past u128 is **unbounded exposure** (`net_exposure =
+  u128::MAX`), so the clamp resizes the bet to the cap and pays it exactly;
+  a saturated payout is never settled. At a bank at the u128 ceiling itself
+  `bank + bet` overflows and the Roll reverts (checked_add).
+- Deposit, Donate and Roll settlement grow the bank and the share supply
+  through `checked_add` / `checked_sub` (revert on overflow). Withdraw only
+  subtracts values proven not to exceed their minuend: `shares ≤ total_shares`
+  is enforced, `fee ≤ payout` (≤ 2%), `payout ≤ bank`
+  (`withdraw_never_exceeds_bank`). The fee accumulator and the stats saturate.
 
 ## Miner caveat (accepted, immutable)
 

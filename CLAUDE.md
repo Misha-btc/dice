@@ -222,11 +222,14 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 
 ## Test Coverage
 
-- **Math (25, `cargo test -p cheeky-bricky-math`)**: ord#4541 recipe pin, payout
+- **Math (28, `cargo test -p cheeky-bricky-math`)**: ord#4541 recipe pin, payout
   exactness/EV bounds (property-tested across hypothetical edges), Kelly caps
   + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
   1000-consecutive-wins survival, share pricing (virtual offset, round-trip,
-  solvency fuzz, inflation-attack unprofitability), mul_div 256-bit.
+  solvency fuzz, inflation-attack unprofitability), mul_div 256-bit, **no
+  wrapping: a quotient past u128 is refused (`mul_div_checked`), an oversized
+  deposit into an empty table is refused, an overflowing payout is unbounded
+  exposure so the clamp still holds**.
 - **Integration (26, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
   98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)

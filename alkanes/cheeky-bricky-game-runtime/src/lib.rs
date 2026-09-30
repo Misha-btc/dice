@@ -41,7 +41,7 @@ use std::sync::Arc;
 
 use cheeky_bricky_math::{
     block_budget, is_win, max_amount_for_exposure, max_bet, max_net_profit, net_exposure,
-    payout_total, roll as roll_entropy, shares_for_deposit, t_max, validate_target,
+    payout_total, roll as roll_entropy, t_max, try_shares_for_deposit, validate_target,
     withdraw_payout, mul_div, BPS, EDGE_BPS, T_MIN,
 };
 
@@ -550,7 +550,10 @@ pub trait CheekyBrickyBase: AlkaneResponder {
 
         let bank = read_u128(ptr("/bank"));
         let total_shares = read_u128(ptr("/total_shares"));
-        let shares = shares_for_deposit(amount, bank, total_shares);
+        // Checked: a deposit whose share count would pass u128 (≳3.4·10^32
+        // units into an empty table) reverts instead of minting a wrapped count.
+        let shares = try_shares_for_deposit(amount, bank, total_shares)
+            .ok_or_else(|| anyhow!("deposit too large: the share count would overflow u128"))?;
         if shares == 0 {
             return Err(anyhow!("deposit too small at the current share price"));
         }
