@@ -83,6 +83,8 @@ if [ -f "$WALLET_FILE" ]; then
     rm -f "$WALLET_FILE"
     echo "  wallet wiped: $WALLET_FILE"
 fi
+# ...and deploy-mainnet.sh's regtest rehearsal record (its txids died with the chain)
+rm -f "$PROJECT_DIR/target/deploy-regtest.env"
 
 echo ""
 echo -e "${CYAN}═══ Reset Complete ═══${NC}"

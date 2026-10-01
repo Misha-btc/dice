@@ -51,7 +51,7 @@ miner-withholding analysis).
 
 ```bash
 cargo build                                  # native build (IDE/check)
-cargo test -p cheeky-bricky-math                   # 25 unit tests (pure math, fast)
+cargo test -p cheeky-bricky-math                   # 28 unit tests (pure math, fast)
 ./scripts/build-wasms.sh                     # wasm32 build + vendor into src/tests/wasm/
 cargo test --lib -- --test-threads=1         # integration tests (alkanes harness)
 # --test-threads=1 because tests share global metashrew state
@@ -59,7 +59,19 @@ cargo test --lib -- --test-threads=1         # integration tests (alkanes harnes
 # Regtest cycle (requires docker compose + alkanes-cli, see arbuzino memory):
 ALKANES_RS=~/subfrost/alkanes-rs ./scripts/reset-regtest.sh
 ALKANES_RS=~/subfrost/alkanes-rs ./scripts/deploy-regtest.sh --build
+
+# Mainnet: operator key first, then the game — preflight (no spend) before the real run.
+# Rehearse with NETWORK=regtest; the record lands in deployments/mainnet.env.
+DEPLOY_PASSWORD=... FEE_RATE=3 GAME_TX=<free slot> PREFLIGHT_ONLY=1 ./scripts/deploy-mainnet.sh
 ```
+
+**Reproducible wasm**: `rust-toolchain.toml` pins `nightly-2026-03-21` (the
+compiler the suite is validated on; alkanes-rs's 1.86.0 is too old for deps in
+Cargo.lock), and `build-wasms.sh` remaps every local path (`CARGO_HOME`, the
+project dir, the toolchain's rust-src) so the bytes don't depend on the machine
+— a build from another directory yields the same sha256. `secp256k1-sys` C code
+is linked in, so a byte-exact rebuild also needs the same clang (Homebrew LLVM
+20.1.4; `deploy-mainnet.sh` records both versions).
 
 ## Repository Layout
 
@@ -86,6 +98,8 @@ cheeky-bricky/
 │   ├── scenario_test.rs             # same-block budget, full withdraw + revive
 │   ├── exit_fee_test.rs             # 2% exit fee → auth-gated WithdrawFees by the operator
 │   └── wasm/                        # vendored cheeky_bricky_game.wasm (+ operator, attacker)
+├── rust-toolchain.toml              # pinned compiler (reproducible deployed wasm)
+├── deployments/mainnet.env          # written by scripts/deploy-mainnet.sh: ids, txids, wasm sha256
 ├── docs/SPEC.md                     # the design document — read this first
 └── scripts/                         # regtest CLI helpers (source scripts/_env.sh)
 ```
