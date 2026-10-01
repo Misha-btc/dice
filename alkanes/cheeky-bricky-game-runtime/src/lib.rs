@@ -399,7 +399,6 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         validate_target(target, edge)?;
 
         let token = bet_token()?;
-        let context = self.context()?;
         let incoming = incoming_sum(&context.incoming_alkanes.0, &token);
         // 0 = bet everything sent (the mint-and-roll flow above).
         let amount = if amount == 0 { incoming } else { amount };
