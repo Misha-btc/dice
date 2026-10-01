@@ -1,5 +1,5 @@
 [package]
-name = "cheeky-bricky-math"
+name = "dice-math"
 version = "0.1.0"
 edition = "2021"
 

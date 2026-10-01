@@ -1,13 +1,13 @@
 [package]
-name = "cheeky-bricky-operator"
+name = "dice-operator"
 version = "0.1.0"
 edition = "2021"
 
 # The operator auth key. A minimal, immutable token contract that holds NO
-# funds: Init mints one key unit to the deployer, and each game table's
-# WithdrawFees requires this key (hardcoded OPERATOR_AUTH_ID) to release its
-# accrued 2% LP-exit fees. Whoever holds the key is the operator. Deploy it at
-# the hardcoded slot BEFORE the game.
+# funds: Init mints three interchangeable key units to the deployer, and each
+# game table's WithdrawFees/SetExitFee requires one of them (hardcoded
+# OPERATOR_AUTH_ID = 4:0xDEAD). Whoever holds a unit is the operator. Deploy it
+# at the hardcoded slot BEFORE the game.
 
 [lib]
 crate-type = ["cdylib", "rlib"]

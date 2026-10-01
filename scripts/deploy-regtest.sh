@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Cheeky Bricky — Regtest Deployment
+# Dice — Regtest Deployment
 #
-# Deploys cheeky-bricky-game as a single immutable direct contract at 4:205 (0xCD).
+# Deploys dice-game as a single immutable direct contract at 4:64206 (0xFACE).
 # Init (opcode 0) runs at deploy time via the cellpack — the
 # standard parameterized-init pattern for immutable alkanes.
 #
@@ -53,7 +53,7 @@ check_success() {
 }
 
 echo "═══════════════════════════════════════"
-echo "  Cheeky Bricky — Regtest Deployment"
+echo "  Dice — Regtest Deployment"
 echo "  Network: $NETWORK / RPC: $RPC_URL"
 echo "═══════════════════════════════════════"
 echo ""
@@ -69,18 +69,19 @@ if [ "$NETWORK" = "regtest" ]; then
     echo ""
 fi
 
-echo "Deploying cheeky-bricky-operator (fee-withdrawal auth key, 4:$OPERATOR_TX)..."
-# Init (opcode 0) mints ONE auth-key unit to your deploy address — guard it,
-# it's the only key that can withdraw a table's fees. Deploy BEFORE the game so
+echo "Deploying dice-operator (fee-withdrawal auth key, 4:$OPERATOR_TX)..."
+# Init (opcode 0) mints THREE interchangeable auth-key units to your deploy
+# address — any one can withdraw fees / set the exit fee on every table, so keep
+# the spares apart and guard all three. Deploy BEFORE the game so
 # the game's hardcoded OPERATOR_AUTH_ID resolves.
-check_success "cheeky-bricky-operator (4:$OPERATOR_TX) + init" \
-    "$(run "[3,$OPERATOR_TX,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_operator.wasm")"
+check_success "dice-operator (4:$OPERATOR_TX) + init" \
+    "$(run "[3,$OPERATOR_TX,0]:v0:v0" "" "$WASM_DIR/dice_operator.wasm")"
 echo ""
 
-echo "Deploying cheeky-bricky-game (with init, bet token $BET_TOKEN_BLOCK:$BET_TOKEN_TX)..."
+echo "Deploying dice-game (with init, bet token $BET_TOKEN_BLOCK:$BET_TOKEN_TX)..."
 # Last two args: share-token name/symbol (u128-packed; 0,0 = defaults).
-check_success "cheeky-bricky-game (4:$GAME_TX) + init" \
-    "$(run "[3,$GAME_TX,0,$BET_TOKEN_BLOCK,$BET_TOKEN_TX,0,0]:v0:v0" "" "$WASM_DIR/cheeky_bricky_game.wasm")"
+check_success "dice-game (4:$GAME_TX) + init" \
+    "$(run "[3,$GAME_TX,0,$BET_TOKEN_BLOCK,$BET_TOKEN_TX,0,0]:v0:v0" "" "$WASM_DIR/dice_game.wasm")"
 echo ""
 
 if [ "$NETWORK" = "regtest" ]; then
@@ -91,24 +92,24 @@ fi
 
 echo ""
 echo "═══════════════════════════════════════"
-echo "  Cheeky Bricky Deployment Complete!"
+echo "  Dice Deployment Complete!"
 echo ""
-echo "  cheeky-bricky-game (singleton + share token): 4:$GAME_TX"
+echo "  dice-game (singleton + share token): 4:$GAME_TX"
 echo "  bet/bank token (immutable):             $BET_TOKEN_BLOCK:$BET_TOKEN_TX"
 echo ""
-echo "  Game constants (from cheeky-bricky-math):"
+echo "  Game constants (from dice-math):"
 echo "    EDGE:   1% — fixed forever, ALL of it to LPs (players pay no house rake)"
 echo "    KELLY:  1% of bank max net win per bet (full Kelly, growth-optimal)"
 echo "    BLOCK:  20% of bank max net payouts per block (miner defense)"
 echo "    TARGET: 1..64238  (0.0015%..98% win chance; max multiplier ~x64880)"
 echo "    EXIT:   2% LP-exit fee, operator-adjustable [0..2%] via SetExitFee"
 echo ""
-echo "  operator auth key (fee withdrawal):     4:$OPERATOR_TX (minted to you)"
+echo "  operator auth keys (fee withdrawal):    3 × 4:$OPERATOR_TX (minted to you)"
 echo "    LP exit fee: 2% of each withdrawal → the table's fee_accum,"
 echo "    collected by the operator via WithdrawFees (op 6, auth-gated)"
 echo ""
 echo "  Next steps:"
-echo "    ./scripts/deposit.sh 100000000        # seed the bank (mint CBRK shares)"
+echo "    ./scripts/deposit.sh 100000000        # seed the bank (mint DICE shares)"
 echo "    ./scripts/roll.sh 32768 1000000       # bet 0.01 DIESEL on a coin flip"
 echo "    ./scripts/view.sh bank                # bank / shares / fee_accum / exit_bps"
 echo "    ./scripts/withdraw-fees.sh            # operator collects the exit fees"

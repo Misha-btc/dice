@@ -608,74 +608,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
-name = "cheeky-bricky-attacker"
-version = "0.1.0"
-dependencies = [
- "alkanes-runtime",
- "alkanes-support",
- "anyhow",
- "metashrew-support",
-]
-
-[[package]]
-name = "cheeky-bricky-game"
-version = "0.1.0"
-dependencies = [
- "alkanes-runtime",
- "alkanes-support",
- "anyhow",
- "cheeky-bricky-game-runtime",
- "metashrew-support",
-]
-
-[[package]]
-name = "cheeky-bricky-game-runtime"
-version = "0.1.0"
-dependencies = [
- "alkanes-runtime",
- "alkanes-support",
- "anyhow",
- "bitcoin 0.32.9",
- "cheeky-bricky-math",
- "metashrew-support",
-]
-
-[[package]]
-name = "cheeky-bricky-math"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bitcoin 0.32.9",
-]
-
-[[package]]
-name = "cheeky-bricky-operator"
-version = "0.1.0"
-dependencies = [
- "alkanes-runtime",
- "alkanes-support",
- "anyhow",
- "metashrew-support",
-]
-
-[[package]]
-name = "cheeky-bricky-tests"
-version = "0.1.0"
-dependencies = [
- "alkanes",
- "alkanes-runtime",
- "alkanes-support",
- "anyhow",
- "bitcoin 0.32.9",
- "cheeky-bricky-math",
- "metashrew-core",
- "metashrew-support",
- "ordinals 1.2.3",
- "protorune",
- "protorune-support",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -868,6 +800,74 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "unicode-xid",
+]
+
+[[package]]
+name = "dice-attacker"
+version = "0.1.0"
+dependencies = [
+ "alkanes-runtime",
+ "alkanes-support",
+ "anyhow",
+ "metashrew-support",
+]
+
+[[package]]
+name = "dice-game"
+version = "0.1.0"
+dependencies = [
+ "alkanes-runtime",
+ "alkanes-support",
+ "anyhow",
+ "dice-game-runtime",
+ "metashrew-support",
+]
+
+[[package]]
+name = "dice-game-runtime"
+version = "0.1.0"
+dependencies = [
+ "alkanes-runtime",
+ "alkanes-support",
+ "anyhow",
+ "bitcoin 0.32.9",
+ "dice-math",
+ "metashrew-support",
+]
+
+[[package]]
+name = "dice-math"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitcoin 0.32.9",
+]
+
+[[package]]
+name = "dice-operator"
+version = "0.1.0"
+dependencies = [
+ "alkanes-runtime",
+ "alkanes-support",
+ "anyhow",
+ "metashrew-support",
+]
+
+[[package]]
+name = "dice-tests"
+version = "0.1.0"
+dependencies = [
+ "alkanes",
+ "alkanes-runtime",
+ "alkanes-support",
+ "anyhow",
+ "bitcoin 0.32.9",
+ "dice-math",
+ "metashrew-core",
+ "metashrew-support",
+ "ordinals 1.2.3",
+ "protorune",
+ "protorune-support",
 ]
 
 [[package]]

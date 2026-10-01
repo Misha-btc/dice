@@ -5,20 +5,20 @@
 //! tx's txid depends on its runestone payload — so varying the *routed* token
 //! amount varies the txid, and with it the roll. `build_roll_forced` walks
 //! route candidates until the PREDICTED outcome (computed with the very
-//! `cheeky_bricky_math::roll` the contract runs) is the one the test wants, then
+//! `dice_math::roll` the contract runs) is the one the test wants, then
 //! indexes that block. Both branches are therefore covered deterministically,
 //! and every test doubles as a proof that the contract's entropy matches the
 //! spec formula bit-for-bit.
 
 use crate::test_log;
-use crate::tests::foundation::{deploy_cheeky_bricky, game_id, mint_diesel, MIN_BET};
+use crate::tests::foundation::{deploy_dice, game_id, mint_diesel, MIN_BET};
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_protostones, create_op_block_with_token_input,
     get_sheet_by_outpoint, index_block, Cellpack, OutPoint, Protostone, DIESEL_ID,
 };
 use anyhow::Result;
 use bitcoin::hashes::Hash;
-use cheeky_bricky_math::{
+use dice_math::{
     is_win, max_bet, max_net_profit, payout_total, shares_for_deposit, t_max, EDGE_BPS,
 };
 
@@ -85,7 +85,7 @@ fn build_roll(
         .compute_txid()
         .as_raw_hash()
         .to_byte_array();
-    let r = cheeky_bricky_math::roll(&blockhash, &txid);
+    let r = dice_math::roll(&blockhash, &txid);
     (block, r)
 }
 
@@ -114,7 +114,7 @@ fn build_roll_forced(
 /// (deposit_outpoint carrying the leftover DIESEL + all shares, leftover, next height).
 fn setup_with_bank(bank: u128) -> Result<(OutPoint, u128, u32)> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky()?;
+    let deploy = deploy_dice()?;
     let mut h = deploy.last_height;
     let (minted, diesel_op) = mint_diesel(h)?;
     h += 1;
@@ -311,7 +311,7 @@ fn test_shares_price_appreciates_after_losses() -> Result<()> {
     index_block(&block, h)?;
 
     let bank_now = call_view(VIEW_BANK)[0];
-    let value_now = cheeky_bricky_math::withdraw_payout(total_shares, bank_now, total_shares);
+    let value_now = dice_math::withdraw_payout(total_shares, bank_now, total_shares);
     assert!(
         value_now > BANK,
         "LP value didn't appreciate: {} ≤ {}",

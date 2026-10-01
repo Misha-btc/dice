@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Cheeky Bricky — MAINNET deployment: the operator auth key, then the game.
+# Dice — MAINNET deployment: the operator auth key, then the game.
 #
 # Deploys the two production contracts in the only safe order:
-#   1. cheeky-bricky-operator at 4:<OPERATOR_AUTH_ID.tx> (0x7EA5) — its init
-#      mints the single fee-withdrawal key to this wallet. The game hardcodes
+#   1. dice-operator at 4:<OPERATOR_AUTH_ID.tx> (0xDEAD = 57005) — its init
+#      mints the three fee-withdrawal keys to this wallet. The game hardcodes
 #      this id, so it is read from the runtime source, never typed twice.
-#   2. cheeky-bricky-game at 4:$GAME_TX, init with the bet token (2:490). The
-#      template is also the canonical table registry and the 2:490 table.
+#   2. dice-game at 4:$GAME_TX (default 0xFACE = 64206), init with the bet
+#      token (2:490). The template is also the canonical table registry and
+#      the 2:490 table.
 # The game is broadcast ONLY after the operator deploy is confirmed without a
-# revert and answers as "Cheeky Bricky Operator". A reserved slot can't be
+# revert and answers as "Dice Operator". A reserved slot can't be
 # overwritten (CREATERESERVED onto an occupied slot reverts), so a clean trace
 # of OUR deploy tx proves the key contract at that id is ours.
 #
 # Hardened like arbuzino/scripts/deploy-coldstern-mainnet.sh:
-#   - FEE_RATE, GAME_TX and DEPLOY_PASSWORD required (no silent defaults);
-#     no --mine on mainnet (wait_for_tx polls traces)
+#   - FEE_RATE and DEPLOY_PASSWORD required (no silent defaults); the game
+#     slot is the agreed 4:64206 unless GAME_TX overrides it; no --mine on
+#     mainnet (wait_for_tx polls traces)
 #   - builds the wasm itself, from a clean committed tree, with the pinned
 #     toolchain, and refuses bytes that embed local paths — the sha256 of each
 #     deployed wasm lands in the deployment record, so anyone can rebuild it
@@ -28,17 +30,15 @@
 # Usage:
 #   # 1) preflight only — builds, checks wallet/funds/token/slots, prints the
 #   #    exact commands and the cost; broadcasts nothing:
-#   DEPLOY_PASSWORD=... FEE_RATE=3 GAME_TX=205 PREFLIGHT_ONLY=1 \
-#     ./scripts/deploy-mainnet.sh
+#   DEPLOY_PASSWORD=... FEE_RATE=3 PREFLIGHT_ONLY=1 ./scripts/deploy-mainnet.sh
 #
 #   # 2) real deploy (asks you to type "mainnet" before each broadcast):
-#   DEPLOY_PASSWORD=... FEE_RATE=3 GAME_TX=205 ./scripts/deploy-mainnet.sh
+#   DEPLOY_PASSWORD=... FEE_RATE=3 ./scripts/deploy-mainnet.sh
 #
 #   # rehearsal on local regtest (auto-mines; start from reset-regtest.sh):
-#   NETWORK=regtest DEPLOY_PASSWORD=testtest FEE_RATE=1 GAME_TX=205 \
-#     ./scripts/deploy-mainnet.sh
+#   NETWORK=regtest DEPLOY_PASSWORD=testtest FEE_RATE=1 ./scripts/deploy-mainnet.sh
 #
-# Optional env: RPC_URL, ESPLORA_URL, WALLET_FILE, BET_TOKEN (block:tx),
+# Optional env: GAME_TX, RPC_URL, ESPLORA_URL, WALLET_FILE, BET_TOKEN (block:tx),
 # OPERATOR_TXID / GAME_TXID (resume from a known reveal txid), TX_TIMEOUT
 # (seconds to wait for a confirmation), ASSUME_YES=1 (skip the typed gates).
 # alkanes-cli takes the passphrase as an argument, so it is visible in the
@@ -49,14 +49,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WASM_DIR="$PROJECT_DIR/target/wasm32-unknown-unknown/release"
-OPERATOR_WASM="$WASM_DIR/cheeky_bricky_operator.wasm"
-GAME_WASM="$WASM_DIR/cheeky_bricky_game.wasm"
-RUNTIME_SRC="$PROJECT_DIR/alkanes/cheeky-bricky-game-runtime/src/lib.rs"
+OPERATOR_WASM="$WASM_DIR/dice_operator.wasm"
+GAME_WASM="$WASM_DIR/dice_game.wasm"
+RUNTIME_SRC="$PROJECT_DIR/alkanes/dice-game-runtime/src/lib.rs"
 BUILD_LOG="$PROJECT_DIR/target/deploy-build.log"
 
 : "${DEPLOY_PASSWORD:?ERROR: DEPLOY_PASSWORD is required}"
 : "${FEE_RATE:?ERROR: FEE_RATE is required (sats/vbyte, e.g. 3)}"
-: "${GAME_TX:?ERROR: GAME_TX is required (reserved slot N: the game lands at 4:N)}"
+GAME_TX="${GAME_TX:-64206}"   # 0xFACE: the game's reserved slot, 4:64206
 
 NETWORK="${NETWORK:-mainnet}"
 PREFLIGHT_ONLY="${PREFLIGHT_ONLY:-0}"
@@ -65,7 +65,7 @@ case "$NETWORK" in
     mainnet)
         RPC_URL="${RPC_URL:-https://mainnet.subfrost.io/v4/subfrost}"
         ESPLORA_URL="${ESPLORA_URL:-https://mempool.space/api}"
-        WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheeky-bricky-mainnet.json}"
+        WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-dice-mainnet.json}"
         BET_TOKEN="${BET_TOKEN:-2:490}"
         STATE_FILE="$PROJECT_DIR/deployments/mainnet.env"
         TX_TIMEOUT="${TX_TIMEOUT:-7200}"
@@ -73,7 +73,7 @@ case "$NETWORK" in
     regtest)
         RPC_URL="${RPC_URL:-http://127.0.0.1:18888}"
         ESPLORA_URL="${ESPLORA_URL:-}"
-        WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheeky-bricky.json}"
+        WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-dice.json}"
         BET_TOKEN="${BET_TOKEN:-2:0}"
         STATE_FILE="$PROJECT_DIR/target/deploy-regtest.env"
         TX_TIMEOUT="${TX_TIMEOUT:-600}"
@@ -144,7 +144,7 @@ def rpc(method, params):
     req = urllib.request.Request(
         url,
         data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
-        headers={"Content-Type": "application/json", "User-Agent": "cheeky-bricky-deploy"},
+        headers={"Content-Type": "application/json", "User-Agent": "dice-deploy"},
     )
     r = json.loads(urllib.request.urlopen(req, timeout=30).read())
     if r.get("error"):
@@ -198,7 +198,7 @@ import json, sys, urllib.request
 req = urllib.request.Request(
     sys.argv[1],
     data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "metashrew_height", "params": []}).encode(),
-    headers={"Content-Type": "application/json", "User-Agent": "cheeky-bricky-deploy"},
+    headers={"Content-Type": "application/json", "User-Agent": "dice-deploy"},
 )
 try:
     print(int(json.loads(urllib.request.urlopen(req, timeout=10).read())["result"]))
@@ -248,10 +248,10 @@ COMMIT="" RUSTC_VERSION="" CLANG_VERSION="" LOCK_SHA="" OPERATOR_SHA="" GAME_SHA
 write_state() {
     mkdir -p "$(dirname "$STATE_FILE")"
     cat > "$STATE_FILE" <<EOF
-# Cheeky Bricky $NETWORK deployment — written by scripts/deploy-mainnet.sh,
+# Dice $NETWORK deployment — written by scripts/deploy-mainnet.sh,
 # updated $(date -u +%Y-%m-%dT%H:%M:%SZ). Commit this file after a mainnet deploy.
 # Rebuild check: git checkout \$COMMIT && ./scripts/build-wasms.sh && shasum -a 256 \\
-#   target/wasm32-unknown-unknown/release/cheeky_bricky_{operator,game}.wasm
+#   target/wasm32-unknown-unknown/release/dice_{operator,game}.wasm
 NETWORK="$NETWORK"
 COMMIT="$COMMIT"
 RUSTC="$RUSTC_VERSION"
@@ -428,23 +428,23 @@ $dirty"
 
 verify_operator() {
     log_phase "Verify operator 4:$OPERATOR_TX"
-    expect_data 'GetName = "Cheeky Bricky Operator"' "$(str_hex 'Cheeky Bricky Operator')" "$OPERATOR_BLOCK" "$OPERATOR_TX" 99
-    expect_data 'GetSymbol = "CBOP"' "$(str_hex CBOP)" "$OPERATOR_BLOCK" "$OPERATOR_TX" 100
-    # Advisory: the key went to p2tr:0 by construction (pointer v0), but
+    expect_data 'GetName = "Dice Operator"' "$(str_hex 'Dice Operator')" "$OPERATOR_BLOCK" "$OPERATOR_TX" 99
+    expect_data 'GetSymbol = "DOP"' "$(str_hex DOP)" "$OPERATOR_BLOCK" "$OPERATOR_TX" 100
+    # Advisory: the keys went to p2tr:0 by construction (pointer v0), but
     # protorunesbyaddress-backed balance reads can lag (flaky on regtest).
     local balance
     balance="$(RUST_LOG=off "${CLI[@]}" alkanes getbalance 2>/dev/null || true)"
     if grep -q "$OPERATOR_TX" <<< "$balance"; then
-        log_ok "auth key 4:$OPERATOR_TX shows in this wallet"
+        log_ok "auth keys 4:$OPERATOR_TX show in this wallet"
     else
-        log_warn "couldn't see 4:$OPERATOR_TX via getbalance — check the wallet holds the key before going on"
+        log_warn "couldn't see 4:$OPERATOR_TX via getbalance — check the wallet holds the 3 keys before going on"
     fi
 }
 
 verify_game() {  # fresh=1 right after this run deployed it
     log_phase "Verify game 4:$GAME_TX"
-    expect_data 'GetName = "Cheeky Bricky"' "$(str_hex 'Cheeky Bricky')" 4 "$GAME_TX" 99
-    expect_data 'GetSymbol = "CBRK"' "$(str_hex CBRK)" 4 "$GAME_TX" 100
+    expect_data 'GetName = "Dice"' "$(str_hex 'Dice')" 4 "$GAME_TX" 99
+    expect_data 'GetSymbol = "DICE"' "$(str_hex DICE)" 4 "$GAME_TX" 100
     # Launch config as documented in CLAUDE.md (min_bet, edge, t_min, t_max,
     # bet token, exit-fee ceiling) — update deliberately if a constant changes.
     expect_data "ViewConfig = (1000, 100, 1, 64238, $BET_B, $BET_T, 200)" \
@@ -457,7 +457,7 @@ verify_game() {  # fresh=1 right after this run deployed it
 
 main() {
     echo "═══════════════════════════════════════════════"
-    echo "  Cheeky Bricky — $NETWORK deploy"
+    echo "  Dice — $NETWORK deploy"
     echo "  RPC:        $RPC_URL"
     echo "  Wallet:     $WALLET_FILE"
     echo "  Fee rate:   $FEE_RATE sats/vbyte"
@@ -471,8 +471,8 @@ main() {
     local op_cellpack="[3,$OPERATOR_TX,0]:v0:v0"
     local game_cellpack="[3,$GAME_TX,0,$BET_B,$BET_T,0,0]:v0:v0"
     log_phase "Plan"
-    [ -z "$OPERATOR_TXID" ] && log "1. operator: alkanes execute \"$op_cellpack\" --envelope cheeky_bricky_operator.wasm  (~$(est_sats "$OPERATOR_WASM") sats)"
-    [ -z "$GAME_TXID" ] && log "2. game:     alkanes execute \"$game_cellpack\" --envelope cheeky_bricky_game.wasm  (~$(est_sats "$GAME_WASM") sats)"
+    [ -z "$OPERATOR_TXID" ] && log "1. operator: alkanes execute \"$op_cellpack\" --envelope dice_operator.wasm  (~$(est_sats "$OPERATOR_WASM") sats)"
+    [ -z "$GAME_TXID" ] && log "2. game:     alkanes execute \"$game_cellpack\" --envelope dice_game.wasm  (~$(est_sats "$GAME_WASM") sats)"
     log "   (--from p2tr:0 --change p2tr:0 --alkanes-change p2tr:0 --fee-rate $FEE_RATE)"
     if [ "$PREFLIGHT_ONLY" = "1" ]; then
         log_ok "PREFLIGHT_ONLY=1 — stopping here, nothing broadcast"
@@ -481,7 +481,7 @@ main() {
 
     if [ -z "$OPERATOR_TXID" ]; then
         confirm "the OPERATOR deploy (4:$OPERATOR_TX)"
-        broadcast "$op_cellpack" "$OPERATOR_WASM" "cheeky-bricky-operator (4:$OPERATOR_TX)"
+        broadcast "$op_cellpack" "$OPERATOR_WASM" "dice-operator (4:$OPERATOR_TX)"
         OPERATOR_TXID="$LAST_TXID"
         write_state
     fi
@@ -493,7 +493,7 @@ main() {
     if [ -z "$GAME_TXID" ]; then
         slot_occupied 4 "$GAME_TX" && die "4:$GAME_TX got occupied meanwhile — pick another GAME_TX"
         confirm "the GAME deploy (4:$GAME_TX, bet token $BET_TOKEN — immutable)"
-        broadcast "$game_cellpack" "$GAME_WASM" "cheeky-bricky-game (4:$GAME_TX)"
+        broadcast "$game_cellpack" "$GAME_WASM" "dice-game (4:$GAME_TX)"
         GAME_TXID="$LAST_TXID"
         write_state
         fresh=1
@@ -506,15 +506,16 @@ main() {
     log_phase "DEPLOYED"
     cat <<EOF
 
-  operator auth key   4:$OPERATOR_TX   txid $OPERATOR_TXID
+  operator auth keys  3 × 4:$OPERATOR_TX   txid $OPERATOR_TXID
   game (template +    4:$GAME_TX   txid $GAME_TXID
     registry + $BET_TOKEN table)
   record              $STATE_FILE
 
   Next:
     1. Commit the record: git add deployments/ && git commit
-    2. Keep the key (1 × 4:$OPERATOR_TX) in an alkanes-aware wallet on its own
-       address — it's the only key for WithdrawFees/SetExitFee, forever.
+    2. Split the 3 keys (4:$OPERATOR_TX) across separate alkanes-aware wallets:
+       one to use, two spares. ANY one is full operator power on every table
+       (WithdrawFees, SetExitFee <= 2%), and no more can ever be minted.
     3. The table is dormant until the first Deposit (op 2) seeds the bank.
     4. Point the frontend at 4:$GAME_TX.
 

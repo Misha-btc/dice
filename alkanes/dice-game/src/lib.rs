@@ -1,6 +1,6 @@
-//! Cheeky Bricky — instant roll-under dice on ALKANES (fully immutable: the 1%
+//! Dice — instant roll-under dice on ALKANES (fully immutable: the 1%
 //! edge is a compile-time constant, there is no privileged capability of
-//! any kind). Thin declare_alkane! wrapper over `CheekyBrickyBase`. The contract
+//! any kind). Thin declare_alkane! wrapper over `DiceBase`. The contract
 //! is simultaneously the game singleton and the LP share token (units of
 //! itself). The whole edge accrues to the LP bank — no protocol fee.
 
@@ -8,20 +8,20 @@ use alkanes_runtime::{declare_alkane, message::MessageDispatch, runtime::AlkaneR
 use anyhow::Result;
 use metashrew_support::compat::to_arraybuffer_layout;
 
-use cheeky_bricky_game_runtime::CheekyBrickyBase;
+use dice_game_runtime::DiceBase;
 
 #[derive(MessageDispatch)]
-pub enum CheekyBrickyMessage {
+pub enum DiceMessage {
     /// One-time init: the bet/bank token id (mainnet: 2:490) and the share
-    /// token's name/symbol (u128-packed LE strings, `0` = "Cheeky
-    /// Bricky"/"CBRK" defaults) — immutable afterwards, like everything else
+    /// token's name/symbol (u128-packed LE strings, `0` = "Dice"/"DICE"
+    /// defaults) — immutable afterwards, like everything else
     /// (the 1% edge and the 1000 min-bet are compiled in). **Factory-ready**:
     /// clone the deployed template for ANY token via
     /// `[6, TEMPLATE_TX, 0, tb, tt, name, symbol]` — each clone is an
     /// independent game (own bank/shares). Direct deploy:
     /// `[3, TX, 0, ...]` (gotcha: deploy runs opcode 0).
     #[opcode(0)]
-    InitCheekyBricky {
+    InitDice {
         token_block: u128,
         token_tx: u128,
         name: u128,
@@ -84,8 +84,8 @@ pub enum CheekyBrickyMessage {
 
     /// Operator-only: withdraw this table's accrued LP-exit fees (in the bet
     /// token) to the caller. Requires the hardcoded operator auth key
-    /// (`OPERATOR_AUTH_ID`) in the inputs — spent-and-returned, so one key
-    /// drains every table. Reverts on a missing key or a zero balance.
+    /// (`OPERATOR_AUTH_ID`) in the inputs — spent-and-returned, so any one
+    /// key unit drains every table. Reverts on a missing key or a zero balance.
     #[opcode(6)]
     WithdrawFees,
 
@@ -138,13 +138,13 @@ pub enum CheekyBrickyMessage {
 }
 
 #[derive(Default)]
-pub struct CheekyBricky();
+pub struct Dice();
 
-impl CheekyBrickyBase for CheekyBricky {}
-impl AlkaneResponder for CheekyBricky {}
+impl DiceBase for Dice {}
+impl AlkaneResponder for Dice {}
 
 declare_alkane! {
-    impl AlkaneResponder for CheekyBricky {
-        type Message = CheekyBrickyMessage;
+    impl AlkaneResponder for Dice {
+        type Message = DiceMessage;
     }
 }

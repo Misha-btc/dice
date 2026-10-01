@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Query Cheeky Bricky state via direct `metashrew_view` JSON-RPC (no wallet
+# Query Dice state via direct `metashrew_view` JSON-RPC (no wallet
 # provider — bypasses regtest protorunesbyaddress flakiness). Decoder
 # pattern lifted from arbuzino/scripts/view.sh, incl. the proper protobuf
 # varint parsing (single-byte length reads corrupt responses ≥ 128 bytes).
@@ -19,7 +19,7 @@ if [ $# -lt 1 ]; then
 fi
 
 GAME_BLOCK=4
-GAME_TX=205
+GAME_TX=64206
 RPC_URL="${RPC_URL:-http://127.0.0.1:18888}"
 
 ARGS=""

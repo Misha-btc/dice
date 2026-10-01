@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Shared environment for Cheeky Bricky regtest scripts. Source, don't execute.
+# Shared environment for Dice regtest scripts. Source, don't execute.
 # Mirrors arbuzino's per-script boilerplate (alkanes-cli resolution etc.).
 
 GAME_BLOCK=4
-GAME_TX=205                # 0xCD
+GAME_TX=64206              # 0xFACE — the same slot as mainnet
 # Operator auth key — the game's hardcoded WithdrawFees gate (OPERATOR_AUTH_ID
-# = 4:0x7EA5). Must match the runtime constant; deploy it BEFORE the game. The
-# deployer receives the single key unit.
+# = 4:0xDEAD). Must match the runtime constant; deploy it BEFORE the game. The
+# deployer receives three interchangeable key units (any one authorizes).
 OPERATOR_BLOCK=4
-OPERATOR_TX=32421          # 0x7EA5
+OPERATOR_TX=57005          # 0xDEAD
 # Bet/bank currency (immutable init param of the game). Regtest defaults to
 # DIESEL 2:0 (the only free-mintable token there); MAINNET uses 2:490 —
 # override with BET_TOKEN_BLOCK/BET_TOKEN_TX.
@@ -28,7 +28,7 @@ fi
 
 NETWORK="${NETWORK:-regtest}"
 RPC_URL="${RPC_URL:-http://127.0.0.1:18888}"
-WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-cheeky-bricky.json}"
+WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-dice.json}"
 DEPLOY_PASSWORD="${DEPLOY_PASSWORD:-testtest}"
 
 CLI="$ALKANES_CLI -p $NETWORK --jsonrpc-url $RPC_URL --wallet-file $WALLET_FILE --passphrase $DEPLOY_PASSWORD"

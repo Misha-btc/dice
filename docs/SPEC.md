@@ -1,13 +1,14 @@
-# Cheeky Bricky — instant dice on ALKANES
+# Dice — instant dice on ALKANES
 
 Status: **implemented** (contract + math + integration tests; regtest e2e
-pending). Name: **Cheeky Bricky** (originally "D = DIESEL"; since the bet currency
-moved to 2:490 the D is whatever you read into it). Domains cheekybricky.com /
-.xyz / .io were free as of 2026-08-25.
+pending). Name: **Dice** — renamed from "Cheeky Bricky" on 2026-10-01 (the
+crates, the wasm and the on-chain names: shares show as "Dice"/"DICE", the
+operator key as "Dice Operator"/"DOP"). The mainnet bet token 2:490 keeps its
+own name, "CheekyB".
 
-Code map: `crates/cheeky-bricky-math` (pure math + the Kelly/no-ruin proofs),
-`alkanes/cheeky-bricky-game-runtime` (all logic, trait `CheekyBrickyBase`),
-`alkanes/cheeky-bricky-game` (thin `declare_alkane!` wrapper), `src/tests/`
+Code map: `crates/dice-math` (pure math + the Kelly/no-ruin proofs),
+`alkanes/dice-game-runtime` (all logic, trait `DiceBase`),
+`alkanes/dice-game` (thin `declare_alkane!` wrapper), `src/tests/`
 (integration on the alkanes harness — deterministic win/lose forcing by
 walking txid candidates).
 
@@ -212,9 +213,9 @@ Flow (all in the bet token):
    the contract's own balance — no external call, nothing to strand.
 2. `WithdrawFees` (opcode 6) pays the whole `/fee_accum` to the caller and zeroes
    it — but ONLY if the caller presents the hardcoded operator auth key
-   (`OPERATOR_AUTH_ID = 4:0x7EA5`). The key is spent-and-returned (never
-   consumed), so one key drains every table the operator runs. Reverts on a
-   missing key or a zero balance.
+   (`OPERATOR_AUTH_ID = 4:0xDEAD`, any one of its three units). The key is
+   spent-and-returned (never consumed), so one key drains every table the
+   operator runs. Reverts on a missing key or a zero balance.
 3. `SetExitFee { bps }` (opcode 7, same auth key) sets `/exit_bps` for that table;
    reverts if `bps > EXIT_BPS_MAX`. One key adjusts every table.
 
@@ -225,11 +226,13 @@ everything" enumeration. If the operator runs many tables they simply collect fr
 each (one auth key works on all). `ViewBank` exposes `/fee_accum` (field 3) so the
 operator can see what's owed per table.
 
-**The auth key** is a minimal standalone contract (`cheeky-bricky-operator`) that
-holds no funds: `Init` mints one self-unit to the deployer, and that unit *is* the
-operator credential (std-proxy pattern — no external auth factory). Whoever holds
-it is the operator; lose it and fee access is gone forever (immutable), but LP and
-player flows never touch it, so a lost key can never freeze the game. It must be
+**The auth key** is a minimal standalone contract (`dice-operator`) that
+holds no funds: `Init` mints three self-units to the deployer, and each unit *is*
+an operator credential (std-proxy pattern — no external auth factory). Whoever
+holds one is the operator. Three, so two spares can live apart: lose all three and
+fee access is gone forever (immutable); any one stolen is full operator power (the
+fees, and the exit fee within 0..2%). LP and player flows never touch the keys, so
+a lost key can never freeze the game. It must be
 deployed at the hardcoded slot BEFORE the game (same "deploy your sink first"
 requirement any hardcoded-id design has).
 
@@ -271,8 +274,8 @@ single privileged action is `WithdrawFees`: the operator collecting the 2% exit
 fees a table has *already accrued*, gated by possession of the hardcoded
 `OPERATOR_AUTH_ID` key. It cannot change any parameter, cannot touch the bank or
 LP shares, and cannot block a withdrawal — it only moves already-earned fee out.
-The key is a minimal standalone token minted once at deploy; guard it (a lost key
-strands only future fees, never player or LP funds). What is deployed is the
+The keys are three units of a minimal standalone token minted once at deploy;
+guard them (losing all three strands only future fees, never player or LP funds). What is deployed is the
 entire game, forever.
 
 ## Storage sketch
@@ -293,8 +296,8 @@ entire game, forever.
 /total_wagered        u128   (stats: Σ effective bets)
 /total_won            u128   (stats: Σ payouts)
 
-operator auth (separate contract, 4:0x7EA5):
-/initialized          u8     (one-shot; init mints 1 key unit to the deployer)
+operator auth (separate contract, 4:0xDEAD):
+/initialized          u8     (one-shot; init mints 3 key units to the deployer)
   (no other state, holds no funds — the key is just a self-unit alkane)
 ```
 
@@ -302,7 +305,7 @@ operator auth (separate contract, 4:0x7EA5):
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `InitCheekyBricky` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); min_bet is a compile-time 1000; self-registers in the table registry |
+| 0 | `InitDice` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed (0 = defaults); min_bet is a compile-time 1000; self-registers in the table registry |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's 99/100; ONE canonical table per token, forever; template-only |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in `--inputs`; clamped not reverted; `amount = 0` bets everything sent (mint-and-roll); response data `(roll, win, payout, effective_amount)` |
 | 2 | `Deposit` | `amount` | mint shares at current price; zero-share deposits revert |
@@ -310,19 +313,19 @@ operator auth (separate contract, 4:0x7EA5):
 | 5 | `Donate` | `amount` | grow the bank, no shares |
 | 6 | `WithdrawFees` | — | operator-only (attach `OPERATOR_AUTH_ID` key, returned); pays this table's `/fee_accum` to the caller, zeroes it; reverts on a missing key or zero balance |
 | 7 | `SetExitFee` | `bps` | operator-only (auth key, returned); set `/exit_bps = bps`; reverts if `bps > 200` (2% ceiling immutable); `0` = free exits |
-| 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Cheeky Bricky" / "CBRK" |
+| 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Dice" / "DICE" |
 | 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 3 = accrued fee, field 4 = live fee bps |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx, exit_bps_max)` — field 7 = 2% ceiling |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank+edge |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
 
-### operator auth key (4:0x7EA5)
+### operator auth key (4:0xDEAD = 57005)
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `Init` | — | one-time; mints 1 auth-key unit to the deployer |
-| 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky Operator" / "CBOP" (wallet convention) |
+| 0 | `Init` | — | one-time; mints 3 auth-key units (any one authorizes) to the deployer |
+| 99/100 | `GetName`/`GetSymbol` | — | "Dice Operator" / "DOP" (wallet convention) |
 
 ## Arithmetic: nothing wraps
 
@@ -373,7 +376,7 @@ cannot conditionally revert on the outcome.
 Legit flows are unaffected: **mint-and-roll** chains two SEPARATE top-level
 protostones (mint, then Roll — each caller `{0,0}`), never a contract call;
 `CreateTable` calls `Deposit` (not Roll) on the clone. Positive path proven by every roll test (all top-level); the negative
-path is proven by `flash_attack_test` — a test-only `cheeky-bricky-attacker`
+path is proven by `flash_attack_test` — a test-only `dice-attacker`
 alkane forwards a Roll from its own contract context and the call reverts
 (no bet recorded, bank untouched, DIESEL refunded).
 
@@ -402,7 +405,7 @@ refunded).
 2. **First-depositor mitigation**: OZ-style virtual offset
    (`VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1`) + revert on zero-share
    deposits. Attack is a guaranteed ~50% loss for the attacker (tested).
-3. **Share token branding**: `GetName` = "Cheeky Bricky", `GetSymbol` = "CBRK".
+3. **Share token branding**: `GetName` = "Dice", `GetSymbol` = "DICE".
 4. **Init params** (immutable): the bet/bank token id — **mainnet 2:490** (a
    parameter, not a hardcode, so the harness can run on mintable DIESEL) plus
    the share name/symbol. `min_bet` is a compile-time constant **1000**
@@ -471,6 +474,20 @@ refunded).
     max, not a knob to push. Doubles every max-bet limit; the 20% block budget is
     now 20 max-wins deep (was 40).
 
+2026-10-01 (pre-mainnet):
+14. **Renamed to Dice** (owner's call): crates, wasm and scripts
+    `cheeky-bricky-*` → `dice-*`; on-chain names "Dice"/"DICE" (shares) and
+    "Dice Operator"/"DOP" (key). The mainnet bet token 2:490 keeps its own name.
+15. **Ids fixed** (owner's call): the operator key moves to
+    `OPERATOR_AUTH_ID = 4:0xDEAD` (57005, was 0x7EA5) and the game deploys at
+    4:0xFACE (64206). Both slots were free on mainnet when chosen;
+    `deploy-mainnet.sh` re-checks before spending anything.
+16. **Three operator keys** (owner's call): `Init` mints 3 interchangeable units
+    instead of 1 — one to use, two spares kept apart, so losing one key no longer
+    strands the fees. Accepted trade-off: any single unit is full operator power
+    (WithdrawFees, SetExitFee within 0..2%); LP and player funds stay out of reach
+    either way.
+
 `CreateTable` is permissionless and one-per-token-forever, so a few economic
 sharp edges are worth accepting on record BEFORE deploy (none are protocol
 bugs; all are isolated to the offending table):
@@ -484,15 +501,15 @@ bugs; all are isolated to the offending table):
 
 2. **A table can be created for another table's SHARES.** Share tokens are
    ordinary alkanes that implement 99/100, so `CreateTable{hBRICK}` succeeds —
-   a game where you bet Cheeky Bricky shares. Fully isolated (own bank/shares), just
+   a game where you bet Dice shares. Fully isolated (own bank/shares), just
    exotic. Not blocked because detecting "is this one of my clones' shares"
    generically isn't possible and the nesting is harmless.
 
-3. **Pathological-supply tokens** (> ~3.4·10^32 base units) can overflow the
-   bootstrap `seed · 10^6` share mint (the virtual-offset amplifier), wrapping
-   that table's share count. Self-inflicted and isolated; realistic tokens are
-   far below this. Optional hardening (not applied): make `shares_for_deposit`
-   revert on overflow instead of wrapping.
+3. **Pathological-supply tokens** (> ~3.4·10^32 base units) would overflow the
+   bootstrap `seed · 10^6` share mint (the virtual-offset amplifier). Hardened
+   2026-09-30: the mint is checked (`try_shares_for_deposit`), so such a deposit
+   reverts instead of wrapping that table's share count. Realistic tokens are far
+   below this.
 
 The registry's one-table-per-token rule means a bad/mis-scaled canonical
 table for a token is permanent — but anyone can still spin a "wildcat" clone
@@ -503,5 +520,6 @@ for their own use; it just won't be the registered one.
 1. Regtest e2e run against a LIVE node (`scripts/e2e-test.sh` is written and
    ready; not yet exercised against docker in this environment). Fuel audit
    (`fuel_audit_test`, CreateTable ≈ 19% of the 3.5M floor) and the
-   block-budget / full-withdraw scenarios (`scenario_test`) are DONE.
+   block-budget / full-withdraw scenarios (`scenario_test`) are DONE. The same
+   goes for a `deploy-mainnet.sh` rehearsal (`NETWORK=regtest`).
 3. Bank seeding plan (Donate from treasury vs LP-first launch).

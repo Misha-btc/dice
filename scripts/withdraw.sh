@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LP out: burn SHARES (CBRK, units of 4:205) for their pro-rata slice of the
+# LP out: burn SHARES (DICE, units of 4:64206) for their pro-rata slice of the
 # bank, MINUS a 2% exit fee (you receive 98%; the fee accrues in the table's
 # fee_accum and is later collected by the operator). MIN_PAYOUT is a slippage
 # floor on the NET amount you receive (0 = off).

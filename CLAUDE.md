@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-**Cheeky Bricky** is an instant roll-under dice game on Bitcoin via the ALKANES metaprotocol.
+**Dice** is an instant roll-under dice game on Bitcoin via the ALKANES metaprotocol.
 The bet/bank currency is a single alkane fixed at init and immutable after —
 **mainnet: 2:490**; regtest/tests: DIESEL 2:0 (the only harness-mintable token).
 Everything is immutable — the 1% edge is a compile-time constant, there is no
@@ -16,7 +16,7 @@ the roll comes from `sha256(blockhash ‖ txid)` of the block that mines the bet
 bet tx's own output atomically. No rounds, no claims, no NFTs, no pending
 liabilities — ever.
 
-The bankroll is **LP-owned**: deposits mint fungible CBRK shares (units of the game
+The bankroll is **LP-owned**: deposits mint fungible DICE shares (units of the game
 alkane itself) at the current `bank/total_shares` price; withdrawals burn them
 pro-rata, anytime. The **full-Kelly cap** (max player net profit = 1% of bank per
 bet — the growth-optimal fraction, independent of chosen odds — plus ≤20% of bank
@@ -33,16 +33,16 @@ compile-time `EXIT_BPS_MAX = 200` (2%)** — a hard, immutable LP guarantee; 0 i
 allowed (free exits). Each table holds its own fee in its own single bet token —
 no shared treasury, no cross-token registry. The operator collects it per-table
 via `WithdrawFees` (opcode 6). Both ops are gated by a **hardcoded auth key**
-(`OPERATOR_AUTH_ID = 4:0x7EA5`, a minimal standalone token minted to the deployer);
-one key controls every table. No external call on the path, so nothing can strand
-the fee.
+(`OPERATOR_AUTH_ID = 4:0xDEAD` = 57005, a minimal standalone token: three
+interchangeable units minted to the deployer, any ONE authorizes); one key
+controls every table. No external call on the path, so nothing can strand the fee.
 
 **Immutable by design** (same philosophy as sister project
 [arbuzino/Fireball](../arbuzino)): no proxy, no upgrade path, no admin *on the
 game*. Every constant is compiled in. The only privileged action is the operator
-collecting fees they already earned, gated by possession of the auth key — losing
-the key means losing fee access (immutable), but LP and player flows never touch
-it.
+collecting fees they already earned, gated by possession of an auth key — losing
+all three keys means losing fee access (immutable), but LP and player flows never
+touch them.
 
 Read `docs/SPEC.md` for the full design (including the Kelly derivation and the
 miner-withholding analysis).
@@ -51,7 +51,7 @@ miner-withholding analysis).
 
 ```bash
 cargo build                                  # native build (IDE/check)
-cargo test -p cheeky-bricky-math                   # 28 unit tests (pure math, fast)
+cargo test -p dice-math                   # 28 unit tests (pure math, fast)
 ./scripts/build-wasms.sh                     # wasm32 build + vendor into src/tests/wasm/
 cargo test --lib -- --test-threads=1         # integration tests (alkanes harness)
 # --test-threads=1 because tests share global metashrew state
@@ -62,7 +62,7 @@ ALKANES_RS=~/subfrost/alkanes-rs ./scripts/deploy-regtest.sh --build
 
 # Mainnet: operator key first, then the game — preflight (no spend) before the real run.
 # Rehearse with NETWORK=regtest; the record lands in deployments/mainnet.env.
-DEPLOY_PASSWORD=... FEE_RATE=3 GAME_TX=<free slot> PREFLIGHT_ONLY=1 ./scripts/deploy-mainnet.sh
+DEPLOY_PASSWORD=... FEE_RATE=3 PREFLIGHT_ONLY=1 ./scripts/deploy-mainnet.sh   # game → 4:64206
 ```
 
 **Reproducible wasm**: `rust-toolchain.toml` pins `nightly-2026-03-21` (the
@@ -76,35 +76,35 @@ is linked in, so a byte-exact rebuild also needs the same clang (Homebrew LLVM
 ## Repository Layout
 
 ```
-cheeky-bricky/
+dice/
 ├── Cargo.toml                       # workspace + test package (git deps float;
 │                                    #  Cargo.lock is seeded from arbuzino's so both
 │                                    #  projects build identical alkanes revisions —
 │                                    #  do NOT add rev= pins, they split the dep graph)
 ├── alkanes/
-│   ├── cheeky-bricky-game/                # thin declare_alkane! wrapper → cheeky_bricky_game.wasm
-│   ├── cheeky-bricky-game-runtime/        # all logic (trait CheekyBrickyBase)
-│   ├── cheeky-bricky-operator/            # fee-withdrawal auth key (mints 1 key at init) → cheeky_bricky_operator.wasm
-│   └── cheeky-bricky-attacker/            # TEST-ONLY fixture: wraps a Roll (flash-attack test)
+│   ├── dice-game/                # thin declare_alkane! wrapper → dice_game.wasm
+│   ├── dice-game-runtime/        # all logic (trait DiceBase)
+│   ├── dice-operator/            # fee-withdrawal auth key (mints 3 keys at init) → dice_operator.wasm
+│   └── dice-attacker/            # TEST-ONLY fixture: wraps a Roll (flash-attack test)
 ├── crates/
-│   └── cheeky-bricky-math/                # pure math: roll, payout, Kelly, share pricing
+│   └── dice-math/                # pure math: roll, payout, Kelly, share pricing
 ├── src/tests/                       # integration tests (harness copied from arbuzino)
 │   ├── helpers.rs / foundation.rs / vendor.rs / test_logger.rs
 │   ├── lp_test.rs                   # deposit/withdraw/donate wiring
 │   ├── roll_test.rs                 # the game, with DETERMINISTIC win/lose forcing
 │   ├── factory_test.rs              # per-token clones (PERMAFROST pattern)
-│   ├── flash_attack_test.rs         # Roll rejects contract callers (cheeky-bricky-attacker fixture)
+│   ├── flash_attack_test.rs         # Roll rejects contract callers (dice-attacker fixture)
 │   ├── fuel_audit_test.rs           # every opcode ≤ 3.5M fuel floor (CreateTable is the heavy one)
 │   ├── scenario_test.rs             # same-block budget, full withdraw + revive
 │   ├── exit_fee_test.rs             # 2% exit fee → auth-gated WithdrawFees by the operator
-│   └── wasm/                        # vendored cheeky_bricky_game.wasm (+ operator, attacker)
+│   └── wasm/                        # vendored dice_game.wasm (+ operator, attacker)
 ├── rust-toolchain.toml              # pinned compiler (reproducible deployed wasm)
 ├── deployments/mainnet.env          # written by scripts/deploy-mainnet.sh: ids, txids, wasm sha256
 ├── docs/SPEC.md                     # the design document — read this first
 └── scripts/                         # regtest CLI helpers (source scripts/_env.sh)
 ```
 
-## Key Constants (immutable, `crates/cheeky-bricky-math/src/lib.rs`)
+## Key Constants (immutable, `crates/dice-math/src/lib.rs`)
 
 ```rust
 EDGE_BPS  = 100          // 1%, FIXED FOREVER — ALL of it accrues to LPs (no house
@@ -121,12 +121,12 @@ T_MIN     = 1            // win chance 1/65536 ≈ 0.0015%; MAX multiplier ≈ �
 VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share revert)
 ```
 
-Plus one constant in `cheeky-bricky-game-runtime` (not math):
+Plus one constant in `dice-game-runtime` (not math):
 
 ```rust
 EXIT_BPS_MAX = 200         // 2% — IMMUTABLE ceiling on the LP-exit fee (hard LP guarantee)
 /exit_bps (storage)        // live fee 0..200, operator-set via SetExitFee; init defaults to 200
-OPERATOR_AUTH_ID = 4:0x7EA5 // hardcoded auth key; WithdrawFees + SetExitFee require it (one key, all tables)
+OPERATOR_AUTH_ID = 4:0xDEAD // 57005; WithdrawFees + SetExitFee need ANY one of its 3 key units (all tables)
 ```
 
 Oversized bets are **clamped down** to fit the caps (excess returned as change,
@@ -134,37 +134,38 @@ the roll still happens); `min_amount` on Roll opts into all-or-nothing.
 
 The Kelly result that makes this work: the growth-optimal cap on player net profit
 is `edge · bank` **regardless of the player's chosen odds** (derived in SPEC.md,
-enforced in `Roll`, proven in `cheeky-bricky-math` tests incl. a 200k-bet no-ruin sim).
+enforced in `Roll`, proven in `dice-math` tests incl. a 200k-bet no-ruin sim).
 
-## Opcodes (cheeky-bricky-game, one contract = game + share token)
+## Opcodes (dice-game at 4:0xFACE = 64206, one contract = game + share token)
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `InitCheekyBricky` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "Cheeky Bricky"/"CBRK"); min_bet is a compile-time 1000 (not an arg); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`**; bet token ≠ self |
+| 0 | `InitDice` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "Dice"/"DICE"); min_bet is a compile-time 1000 (not an arg); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`**; bet token ≠ self |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in; CLAMPED not reverted; **`amount = 0` bets everything sent** — the primary mint-and-roll flow (`[mint] → [Roll(target,0)]`, mint size unknowable at compose time); response data `(roll, win, payout, effective_amount)` 4×u128 LE |
-| 2 | `Deposit` | `amount` | bet token → mint CBRK shares at current price; zero-share deposits revert |
+| 2 | `Deposit` | `amount` | bet token → mint DICE shares at current price; zero-share deposits revert |
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; **2% exit fee retained in /fee_accum, LP gets 98%**; slippage floor applies to the NET (0=off) |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
 | 6 | `WithdrawFees` | — | **operator-only** (attach the `OPERATOR_AUTH_ID` key, spent-and-returned); pays this table's whole `/fee_accum` (bet token) to the caller and zeroes it. Reverts on a missing key or zero balance. No external call |
 | 7 | `SetExitFee` | `bps` | **operator-only** (auth key, returned); set `/exit_bps = bps`, reverts if `bps > 200` (the 2% ceiling is immutable). `0` = free exits |
-| 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky" / "CBRK" — **wallet convention, load-bearing** |
+| 99/100 | `GetName`/`GetSymbol` | — | "Dice" / "DICE" — **wallet convention, load-bearing** |
 | 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 4 is the live fee |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx, exit_bps_max)` — field 7 is the immutable 2% fee ceiling |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
 
-### cheeky-bricky-operator (4:0x7EA5) — fee-withdrawal auth key
+### dice-operator (4:0xDEAD = 57005) — fee-withdrawal auth key
 
-Standalone, holds NO funds. It's just the key: `Init` mints one self-unit to the
-deployer, and the game's `WithdrawFees` requires possession of it. Implements the
+Standalone, holds NO funds. It's just the keys: `Init` mints three self-units
+(interchangeable keys: one to use, two spares to keep apart) to the deployer, and
+the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
 99/100 wallet convention so the key displays cleanly.
 
 | Opcode | Name | Args | Notes |
 |--------|------|------|-------|
-| 0 | `Init` | — | one-time; mints 1 auth-key unit to the deploy output |
-| 99/100 | `GetName`/`GetSymbol` | — | "Cheeky Bricky Operator" / "CBOP" |
+| 0 | `Init` | — | one-time; mints 3 auth-key units to the deploy output |
+| 99/100 | `GetName`/`GetSymbol` | — | "Dice Operator" / "DOP" |
 
 ## Storage Layout
 
@@ -176,7 +177,7 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 /table/{token_id}  AlkaneId (canonical-table registry; template-only, CreateTable-only writer)
 /min_bet           u128  (immutable init param)
 /bank              u128  (LP bankroll: deposits + donations + losses − wins − withdrawals)
-/total_shares      u128  (CBRK supply)
+/total_shares      u128  (DICE supply)
 /last_win_height   u128  (per-block budget bookkeeping)
 /paid_this_block   u128  (Σ realized net payouts at last_win_height)
 /exit_bps          u128  (live LP-exit fee 0..200; operator-set via SetExitFee, init=200)
@@ -195,7 +196,7 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
    `metashrew_support` in the graph and trait-mismatch compile errors. Revisions
    are locked by Cargo.lock (seeded from arbuzino's — keep them in sync).
 3. **Entropy byte order**: raw `Hash::to_byte_array()` bytes (internal LE order),
-   NOT display hex. `cheeky_bricky_math::roll` must stay byte-for-byte equal to ord#4541
+   NOT display hex. `dice_math::roll` must stay byte-for-byte equal to ord#4541
    (`sha256(blockhash ‖ txid)`, first 16 bytes LE u128, mod 65536) — it's pinned by
    `roll_matches_ord_4541_recipe`.
 4. **Deterministic outcome forcing in tests**: the harness block header is fixed at
@@ -236,7 +237,7 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
 
 ## Test Coverage
 
-- **Math (28, `cargo test -p cheeky-bricky-math`)**: ord#4541 recipe pin, payout
+- **Math (28, `cargo test -p dice-math`)**: ord#4541 recipe pin, payout
   exactness/EV bounds (property-tested across hypothetical edges), Kelly caps
   + clamp primitive, t_max, 200k-bet no-ruin + growth sims,
   1000-consecutive-wins survival, share pricing (virtual offset, round-trip,
@@ -244,13 +245,14 @@ deployer, and the game's `WithdrawFees` requires possession of it. Implements th
   wrapping: a quotient past u128 is refused (`mul_div_checked`), an oversized
   deposit into an empty table is refused, an overflowing payout is unbounded
   exposure so the clamp still holds**.
-- **Integration (28, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+- **Integration (29, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
   98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)
   (`lp_test`); exit fee — accrue on withdraw → operator collects via auth-gated
   `WithdrawFees` (keyless attempt reverts; empty-fee reverts and refunds the key);
   **`SetExitFee` lowers the cut (1% nets 99%), 0 = free exit, > 200 reverts,
-  keyless reverts** (`exit_fee_test`);
+  keyless reverts**, **init mints 3 keys and any single unit authorizes**
+  (`exit_fee_test`);
   forced win/lose settlement, **a second Roll in the same tx reverts (one Roll per
   tx, full refund)**, `amount=0` bets-everything sentinel,
   oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust

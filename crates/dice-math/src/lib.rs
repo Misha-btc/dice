@@ -1,4 +1,4 @@
-//! Pure math for **Cheeky Bricky** — an instant roll-under dice game on ALKANES with
+//! Pure math for **Dice** — an instant roll-under dice game on ALKANES with
 //! an LP-owned bankroll and a forever-fixed 1% edge.
 //!
 //! Mental model:

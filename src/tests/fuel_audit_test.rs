@@ -9,13 +9,13 @@
 //! staticcalls to the token (99/100), and sub-calls the clone's Deposit — by
 //! far the heaviest path. If anything blows the budget, it is this.
 
-use crate::tests::foundation::{deploy_cheeky_bricky, game_id, mint_diesel, GAME_TX, MIN_BET};
+use crate::tests::foundation::{deploy_dice, game_id, mint_diesel, GAME_TX, MIN_BET, OPERATOR_TX};
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, create_operation_block, index_block,
     AlkaneId, Cellpack, OutPoint, DIESEL_ID,
 };
 use anyhow::Result;
-use cheeky_bricky_math::shares_for_deposit;
+use dice_math::shares_for_deposit;
 use protorune_support::rune_transfer::RuneTransfer;
 
 /// Worst-case per-tx fuel floor. Every op must fit here.
@@ -43,7 +43,7 @@ fn pct(gas: u64) -> f64 {
 }
 
 fn print_table(rows: &[(&str, u64)]) {
-    println!("\n┌─ Cheeky Bricky fuel audit ");
+    println!("\n┌─ Dice fuel audit ");
     println!("│ {:<28} {:>12} {:>10}  {}", "opcode", "fuel", "% of 3.5M", "fits tx?");
     println!("│ {:-<28} {:->12} {:->10}  {:-<8}", "", "", "", "");
     for (name, gas) in rows {
@@ -59,7 +59,7 @@ fn print_table(rows: &[(&str, u64)]) {
 #[test]
 fn fuel_audit_all_opcodes() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky()?;
+    let deploy = deploy_dice()?;
     let mut h = deploy.last_height;
     let g = game_id();
 
@@ -133,7 +133,7 @@ fn fuel_audit_all_opcodes() -> Result<()> {
     rows.push(("Donate (5)", measure(&g, vec![5, seed], vec![rune(DIESEL_ID, seed)], 0)?));
     // WithdrawFees: auth-gated read/zero of /fee_accum + payout. The operator
     // auth key is supplied as an incoming rune (no contract deploy needed).
-    let auth = AlkaneId { block: 4, tx: 0x7EA5 };
+    let auth = AlkaneId { block: 4, tx: OPERATOR_TX };
     rows.push(("WithdrawFees (6)", measure(&g, vec![6], vec![rune(auth, 1)], 880_050)?));
     // SetExitFee: auth-gated single storage write.
     rows.push(("SetExitFee (7)", measure(&g, vec![7, 100], vec![rune(auth, 1)], 880_050)?));

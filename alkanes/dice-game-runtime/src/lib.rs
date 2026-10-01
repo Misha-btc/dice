@@ -1,4 +1,4 @@
-//! Cheeky Bricky runtime — instant roll-under dice vs an LP-owned bankroll.
+//! Dice runtime — instant roll-under dice vs an LP-owned bankroll.
 //!
 //! One transaction = one bet = one resolution: the roll is derived from
 //! `sha256(blockhash ‖ txid)` of the block that mines the bet (ord#4541's
@@ -39,7 +39,7 @@ use bitcoin::hashes::Hash;
 use metashrew_support::index_pointer::KeyValuePointer;
 use std::sync::Arc;
 
-use cheeky_bricky_math::{
+use dice_math::{
     block_budget, is_win, max_amount_for_exposure, max_bet, max_net_profit, net_exposure,
     payout_total, roll as roll_entropy, t_max, try_shares_for_deposit, validate_target,
     withdraw_payout, mul_div, BPS, EDGE_BPS, T_MIN,
@@ -63,11 +63,13 @@ pub const MIN_BET: u128 = 1_000;
 /// token (`/fee_accum`); the operator collects it per-table via `WithdrawFees`.
 pub const EXIT_BPS_MAX: u128 = 200;
 
-/// The operator auth key (hardcoded, shared by the template and every clone).
-/// `WithdrawFees` releases a table's `/fee_accum` only to a caller who presents
-/// this key. Whoever holds it is the operator; deploy the operator contract at
-/// this slot BEFORE the game so the id resolves.
-pub const OPERATOR_AUTH_ID: AlkaneId = AlkaneId { block: 4, tx: 0x7EA5 };
+/// The operator auth key, 4:0xDEAD (57005) — hardcoded, shared by the template
+/// and every clone. `WithdrawFees`/`SetExitFee` act only for a caller who
+/// presents a unit of it. The operator contract mints three interchangeable
+/// units (backups against loss) and ANY one authorizes, so whoever holds one is
+/// the operator. Deploy the operator contract at this slot BEFORE the game so
+/// the id resolves.
+pub const OPERATOR_AUTH_ID: AlkaneId = AlkaneId { block: 4, tx: 0xDEAD };
 
 
 // ---------- Storage helpers (mirror fireball-game-runtime) ----------
@@ -166,11 +168,11 @@ fn pack_str(s: &str) -> u128 {
 
 // ---------- The trait ----------
 
-pub trait CheekyBrickyBase: AlkaneResponder {
+pub trait DiceBase: AlkaneResponder {
     // ---- Init ----
 
     /// One-time. The bet/bank token id and the share token's name/symbol
-    /// (one u128 each, standard LE packing; `0` = the "Cheeky Bricky"/"CBRK"
+    /// (one u128 each, standard LE packing; `0` = the "Dice"/"DICE"
     /// defaults) — immutable afterwards, like everything else: the edge is a
     /// compile-time 1%, the min bet a compile-time 1000, and there is no
     /// privileged capability of any kind.
@@ -181,7 +183,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
     /// shares) for any token without re-deploying bytecode. Direct deploy
     /// runs the same init via `[3, TX, 0, ...]` (gotcha: deploy auto-runs
     /// opcode 0).
-    fn init_cheeky_bricky(
+    fn init_dice(
         &self,
         token_block: u128,
         token_tx: u128,
@@ -214,12 +216,12 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         let name_s = trim(name);
         let symbol_s = trim(symbol);
         ptr("/name").set(Arc::new(if name_s.is_empty() {
-            b"Cheeky Bricky".to_vec()
+            b"Dice".to_vec()
         } else {
             name_s.into_bytes()
         }));
         ptr("/symbol").set(Arc::new(if symbol_s.is_empty() {
-            b"CBRK".to_vec()
+            b"DICE".to_vec()
         } else {
             symbol_s.into_bytes()
         }));
@@ -300,12 +302,12 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         )
         .unwrap_or_default();
         let table_name = if tname.is_empty() {
-            0 // clone init falls back to "Cheeky Bricky"
+            0 // clone init falls back to "Dice"
         } else {
             pack_str(&format!("{} House", tname))
         };
         let table_sym = if tsym.is_empty() {
-            0 // fallback "CBRK"
+            0 // fallback "DICE"
         } else {
             pack_str(&format!("h{}", tsym))
         };
@@ -528,7 +530,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
 
     /// Add exactly `amount` of the bet token to the bank and mint share
     /// units of this contract at the current share price
-    /// (`amount · (S + 10^6) / (B + 1)`, virtual-offset — see cheeky-bricky-math).
+    /// (`amount · (S + 10^6) / (B + 1)`, virtual-offset — see dice-math).
     /// Overpay above `amount` returned as change; stray other alkanes handed
     /// back. Reverts if the deposit would mint zero shares.
     fn deposit(&self, amount: u128) -> Result<CallResponse> {
@@ -643,7 +645,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
         }
 
         write_u128(ptr("/total_shares"), total_shares - shares);
-        // payout ≤ bank proven in cheeky-bricky-math (withdraw_never_exceeds_bank).
+        // payout ≤ bank proven in dice-math (withdraw_never_exceeds_bank).
         write_u128(ptr("/bank"), bank.saturating_sub(payout));
         // Accrue the fee (stays in the contract's bet-token balance).
         let fa = ptr("/fee_accum");
@@ -680,7 +682,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
 
     /// Revert unless the caller presents the hardcoded operator auth key
     /// (`OPERATOR_AUTH_ID`) in the incoming set. The key is never consumed —
-    /// callers forward the incoming set back — so one key controls every table.
+    /// callers forward the incoming set back — so any one key unit controls every table.
     fn require_operator(&self) -> Result<()> {
         let context = self.context()?;
         let auth: u128 = context
@@ -701,7 +703,7 @@ pub trait CheekyBrickyBase: AlkaneResponder {
     /// Operator-only: pay out this table's accrued exit fees (`/fee_accum`, in
     /// the bet token) to the caller and zero the accumulator. Auth is the
     /// hardcoded `OPERATOR_AUTH_ID` key, spent-and-returned (never consumed), so
-    /// one key drains every table the operator runs. No external call, so
+    /// any one key unit drains every table the operator runs. No external call, so
     /// nothing can strand the fee; it simply comes out of the balance the game
     /// already holds from the carve-out. Reverts on a zero balance or a missing
     /// key. Any other incoming (including the key) is handed straight back.

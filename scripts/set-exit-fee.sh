@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Operator: set a table's LP-exit fee to BPS (0..=200; 200 = 2% = the immutable
-# max, 0 = free exits). Requires the operator auth key (1 unit of
+# max, 0 = free exits). Requires the operator auth key (1 of the 3 units of
 # 4:OPERATOR_TX) — routed in and returned. One key works on every table.
 #
 # Usage: ./scripts/set-exit-fee.sh BPS [TABLE_BLOCK TABLE_TX]

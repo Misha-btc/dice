@@ -4,21 +4,23 @@
 //! operator-adjustable in `[0, 2%]` via `SetExitFee`) of the gross payout in the table's
 //! own `/fee_accum` (still the bet token); the LP receives 98%. `WithdrawFees`
 //! (opcode 6) pays that accrued fee to whoever presents the hardcoded operator
-//! auth key (4:0x7EA5) — one key drains every table the operator runs — and
+//! auth key (4:0xDEAD; init mints three interchangeable units and any one
+//! authorizes) — one key drains every table the operator runs — and
 //! zeroes the accumulator. No shared treasury, no cross-token registry: each
 //! table holds its own single-token fee. This proves fee accrual, the auth
 //! gate, and that the fee is observable via ViewBank's `fee_accum` field.
 
 use crate::test_log;
 use crate::tests::foundation::{
-    deploy_cheeky_bricky, deploy_operator, game_id, mint_diesel,
+    deploy_dice, deploy_operator, game_id, mint_diesel, OPERATOR_KEYS,
 };
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, create_operation_block,
     get_sheet_by_outpoint, index_block, AlkaneId, Cellpack, OutPoint, DIESEL_ID,
 };
 use anyhow::Result;
-use cheeky_bricky_math::{shares_for_deposit, withdraw_payout};
+use dice_math::{shares_for_deposit, withdraw_payout};
+use protorune_support::rune_transfer::RuneTransfer;
 
 const OP_DEPOSIT: u128 = 2;
 const OP_WITHDRAW: u128 = 3;
@@ -37,6 +39,20 @@ fn bal(outpoint: &OutPoint, id: AlkaneId) -> u128 {
     get_sheet_by_outpoint(outpoint).unwrap().get_cached(&id.into())
 }
 
+/// Simulate a call on the game with exactly `runes` attached (nothing is
+/// committed). Returns the alkanes handed back, or the revert.
+fn simulate(inputs: Vec<u128>, runes: Vec<RuneTransfer>) -> Result<Vec<(AlkaneId, u128)>> {
+    let mut parcel = alkanes::view::plain_parcel_from_cellpack(Cellpack { target: game_id(), inputs });
+    parcel.runes = runes;
+    parcel.height = 880_050;
+    let (resp, _gas) = alkanes::view::simulate_parcel(&parcel, FUEL)?;
+    Ok(resp.alkanes.0.into_iter().map(|t| (t.id, t.value)).collect())
+}
+
+fn rune(id: AlkaneId, value: u128) -> RuneTransfer {
+    RuneTransfer { id: id.into(), value }
+}
+
 fn view(op: u128) -> Vec<u128> {
     alkanes::view::call_view(&game_id(), &vec![op], FUEL)
         .unwrap_or_default()
@@ -49,7 +65,7 @@ fn view(op: u128) -> Vec<u128> {
 /// (accruing a 2% fee). Returns `(fee, operator id, key outpoint, next_height)`.
 fn accrue_fee() -> Result<(u128, AlkaneId, OutPoint, u32)> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky()?;
+    let deploy = deploy_dice()?;
     let mut h = deploy.last_height;
 
     let (operator, key, next_h) = deploy_operator(h)?;
@@ -120,9 +136,31 @@ fn test_operator_withdraws_fee_with_auth_key() -> Result<()> {
     index_block(&wf, h)?;
     let out = op_outpoint(&wf);
     assert_eq!(bal(&out, DIESEL_ID), fee, "operator receives exactly the accrued fee");
-    assert_eq!(bal(&out, operator), 1, "auth key returned (spent-and-returned)");
+    assert_eq!(bal(&out, operator), OPERATOR_KEYS, "every key unit comes back (spent-and-returned)");
     assert_eq!(view(VIEW_BANK).get(2).copied(), Some(0), "fee_accum zeroed after withdrawal");
     test_log!("[EXIT] operator withdrew fee {} with auth key", fee);
+    Ok(())
+}
+
+/// The operator init mints three interchangeable key units (spares against
+/// loss), and ANY single unit authorizes: simulate the fee calls with exactly
+/// one unit attached, then with none.
+#[test]
+fn test_three_keys_minted_any_single_one_authorizes() -> Result<()> {
+    let (fee, operator, key, _h) = accrue_fee()?;
+    assert_eq!(bal(&key, operator), OPERATOR_KEYS, "init mints three key units");
+
+    let paid = simulate(vec![OP_WITHDRAW_FEES], vec![rune(operator.clone(), 1)])
+        .expect("one key unit authorizes WithdrawFees");
+    assert!(paid.contains(&(DIESEL_ID, fee)), "pays the whole accrued fee: {:?}", paid);
+    assert!(paid.contains(&(operator.clone(), 1)), "hands the one key back: {:?}", paid);
+    assert!(
+        simulate(vec![OP_SET_EXIT_FEE, 100], vec![rune(operator.clone(), 1)]).is_ok(),
+        "one key unit authorizes SetExitFee"
+    );
+    assert!(simulate(vec![OP_WITHDRAW_FEES], vec![]).is_err(), "no key, no fees");
+    assert!(simulate(vec![OP_SET_EXIT_FEE, 100], vec![]).is_err(), "no key, no fee change");
+    test_log!("[EXIT] {} key units minted; any single one authorizes", OPERATOR_KEYS);
     Ok(())
 }
 
@@ -130,7 +168,7 @@ fn test_operator_withdraws_fee_with_auth_key() -> Result<()> {
 /// auth key. Returns `(diesel_op, minted, operator, key, next_height)`.
 fn deploy_and_set_fee(bps: u128) -> Result<(OutPoint, u128, AlkaneId, OutPoint, u32)> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky()?;
+    let deploy = deploy_dice()?;
     let mut h = deploy.last_height;
     let (operator, mut key, next_h) = deploy_operator(h)?;
     h = next_h;
@@ -212,7 +250,7 @@ fn test_set_exit_fee_zero_means_free_exit() -> Result<()> {
 #[test]
 fn test_set_exit_fee_cannot_exceed_max_or_skip_auth() -> Result<()> {
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky()?;
+    let deploy = deploy_dice()?;
     let mut h = deploy.last_height;
     let (operator, key, next_h) = deploy_operator(h)?;
     h = next_h;
@@ -262,7 +300,7 @@ fn test_withdraw_fees_reverts_when_empty() -> Result<()> {
     // Fresh table, no LP activity → no fee. Even with the key, WithdrawFees
     // reverts (nothing to pay) and the key is refunded.
     clear_test_environment();
-    let deploy = deploy_cheeky_bricky()?;
+    let deploy = deploy_dice()?;
     let mut h = deploy.last_height;
     let (operator, key, next_h) = deploy_operator(h)?;
     h = next_h;
@@ -276,7 +314,7 @@ fn test_withdraw_fees_reverts_when_empty() -> Result<()> {
     );
     index_block(&wf, h)?;
     let out = op_outpoint(&wf);
-    assert_eq!(bal(&out, operator), 1, "revert refunds the auth key");
+    assert_eq!(bal(&out, operator), OPERATOR_KEYS, "revert refunds every key unit");
     assert_eq!(bal(&out, DIESEL_ID), 0, "no payout on empty fee");
     Ok(())
 }
