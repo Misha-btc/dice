@@ -1,0 +1,7 @@
+# Pinned so the deployed wasm can be rebuilt byte-for-byte from a commit
+# (scripts/build-wasms.sh also strips machine-local paths). This is the exact
+# compiler the test suite was validated on. Not alkanes-rs's 1.86.0: deps in
+# Cargo.lock (darling 0.23, serde_with 3.20) need rustc >= 1.88.
+[toolchain]
+channel = "nightly-2026-03-21"
+targets = ["wasm32-unknown-unknown"]

@@ -12,6 +12,16 @@ TEST_WASM_DIR="$PROJECT_DIR/src/tests/wasm"
 echo "Building Cheeky Bricky WASM contracts..."
 cd "$PROJECT_DIR"
 
+# Reproducible bytes: panic locations embed source paths, which would bake
+# this machine's $HOME into the wasm — dependency sources under CARGO_HOME, and
+# std sources under the toolchain's local rust-src (mapped back to the
+# canonical /rustc/<commit> that a toolchain without rust-src would emit).
+# Remap them so anyone can rebuild the deployed bytecode from a commit
+# (toolchain: rust-toolchain.toml).
+RUST_SRC="$(rustc --print sysroot)/lib/rustlib/src/rust"
+RUSTC_COMMIT="$(rustc -vV | sed -n 's/^commit-hash: //p')"
+export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$(pwd -P)=/build --remap-path-prefix=$RUST_SRC=/rustc/$RUSTC_COMMIT"
+
 # cheeky-bricky-game is the product; cheeky-bricky-attacker is a TEST-ONLY fixture used by
 # flash_attack_test (never deployed).
 CC="/opt/homebrew/opt/llvm/bin/clang" cargo build --release --target wasm32-unknown-unknown -p cheeky-bricky-game
