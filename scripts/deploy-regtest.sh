@@ -63,7 +63,7 @@ if [ "$NETWORK" = "regtest" ]; then
     if [ ! -f "$WALLET_FILE" ]; then
         $CLI wallet create > /dev/null 2>&1
     fi
-    $CLI bitcoind generatetoaddress 301 "p2tr:0" > /dev/null 2>&1
+    $CLI --bitcoin-rpc-url "$BITCOIN_RPC_URL" bitcoind generatetoaddress 301 "p2tr:0" > /dev/null 2>&1
     wait_for_height 300
     echo "  ✓ Wallet funded"
     echo ""

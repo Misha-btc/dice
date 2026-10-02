@@ -5,7 +5,7 @@
 # pass MIN_AMOUNT to revert instead if the clamp falls below it (0 = accept).
 #
 # Usage: ./scripts/roll.sh TARGET AMOUNT [MIN_AMOUNT]
-#   TARGET ∈ [656, t_max] (see ./scripts/view.sh config) — win chance TARGET/65536
+#   TARGET ∈ [1, t_max] (see ./scripts/view.sh config) — win chance TARGET/65536
 #   AMOUNT — bet-token base units (≥ min_bet; cf. view.sh max-bet TARGET)
 
 set -euo pipefail

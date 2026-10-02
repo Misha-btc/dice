@@ -216,6 +216,18 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
    miner-stuffing defense working as intended, not a bug.
 7. **mint_diesel in tests aliases its outpoint** (null-input tx → same txid every
    call): mint at most once per test.
+8. **Regtest on fresh alkanes-rs develop** (rehearsed 2026-10-01: origin/develop
+   46584fda in a clean worktree, `ALKANES_RS=~/subfrost/alkanes-rs-upstream`).
+   Its alkanes-jsonrpc caps `generatetoaddress` at 1 block per call, so bulk
+   mining goes straight to bitcoind (`--bitcoin-rpc-url`, `BITCOIN_RPC_URL` in
+   `_env.sh`). Its alkanes-cli appends a DIESEL-mint protostone `[2,0,77]` to every
+   tx (on mainnet it may revert harmlessly), so `deploy-mainnet.sh` identifies its
+   deploy by `create_alkane`, never by vout. The stack itself needed local fixes:
+   the Dockerfiles miss `alkanes/ vendor/ wit/`; `rockshrew-mono` must be built from
+   kungfuflex/metashrew v10 (`eca790ca`, what develop's Cargo.lock pins); and
+   rockshrew needs `--view-memory-floor-mb 512` (the 8 GB default refuses every
+   view on a small Docker VM) and `--reorg-check-threshold 0` (its near-tip fetch
+   stalls; views can still lag one block until the next block is indexed).
 
 ## Security invariants (immutable — do not weaken)
 

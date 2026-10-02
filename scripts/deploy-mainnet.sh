@@ -16,7 +16,7 @@
 # Hardened like arbuzino/scripts/deploy-coldstern-mainnet.sh:
 #   - FEE_RATE and DEPLOY_PASSWORD required (no silent defaults); the game
 #     slot is the agreed 4:64206 unless GAME_TX overrides it; no --mine on
-#     mainnet (wait_for_tx polls traces)
+#     mainnet (wait_for_deploy polls traces)
 #   - builds the wasm itself, from a clean committed tree, with the pinned
 #     toolchain, and refuses bytes that embed local paths — the sha256 of each
 #     deployed wasm lands in the deployment record, so anyone can rebuild it
@@ -77,6 +77,9 @@ case "$NETWORK" in
         BET_TOKEN="${BET_TOKEN:-2:0}"
         STATE_FILE="$PROJECT_DIR/target/deploy-regtest.env"
         TX_TIMEOUT="${TX_TIMEOUT:-600}"
+        # bulk mining goes to bitcoind directly: alkanes-jsonrpc caps
+        # generatetoaddress at 1 block per call
+        BITCOIN_RPC_URL="${BITCOIN_RPC_URL:-http://bitcoinrpc:bitcoinrpc@127.0.0.1:18443}"
         ;;
     *) echo "ERROR: NETWORK must be mainnet or regtest"; exit 1 ;;
 esac
@@ -94,6 +97,8 @@ OPERATOR_BLOCK="$(echo "$OP_LINE" | sed -E 's/.*block: ([0-9]+),.*/\1/')"
 OPERATOR_TX="$(( $(echo "$OP_LINE" | sed -E 's/.*tx: (0x[0-9A-Fa-f]+|[0-9]+) .*/\1/') ))"
 [ "$OPERATOR_BLOCK" = "4" ] || { echo "ERROR: OPERATOR_AUTH_ID must be a reserved 4:N id"; exit 1; }
 [ "$GAME_TX" != "$OPERATOR_TX" ] || { echo "ERROR: GAME_TX can't be the operator slot $OPERATOR_TX"; exit 1; }
+KEY_SUPPLY="$(sed -nE 's/^pub const KEY_SUPPLY: u128 = ([0-9]+);.*/\1/p' "$PROJECT_DIR/alkanes/dice-operator/src/lib.rs")"
+[ -n "$KEY_SUPPLY" ] || { echo "ERROR: can't read KEY_SUPPLY from alkanes/dice-operator/src/lib.rs"; exit 1; }
 
 ALKANES_RS="${ALKANES_RS:-$HOME/subfrost/alkanes-rs}"
 ALKANES_CLI="${ALKANES_CLI:-}"
@@ -297,23 +302,35 @@ broadcast() {  # cellpack wasm label
     log_ok "$3 broadcast, txid $LAST_TXID"
 }
 
-wait_for_tx() {  # txid — until its protostone trace shows up; exits on a revert
-    local txid="$1" start vout trace
+DEPLOY_TRACE=""
+wait_for_deploy() {  # txid block tx — until the trace that creates block:tx shows up
+    # Find OUR protostone by what it did (create_alkane block:tx), not by vout:
+    # newer alkanes-cli appends a DIESEL-mint protostone [2,0,77] to every tx,
+    # and on mainnet that mint can revert (block already claimed) — that must
+    # not read as our deploy failing, nor shift which vout we inspect.
+    local txid="$1" want_block="$2" want_tx="$3" start vout trace indexed
     start=$(date +%s)
     log "⏳ waiting for $txid to confirm and index (timeout ${TX_TIMEOUT}s)..."
     while true; do
-        for vout in 4 3 5 2 6; do
+        indexed=0
+        for vout in 2 3 4 5 6 7 8; do
             trace="$("${CLI[@]}" alkanes trace "${txid}:${vout}" 2>&1 || true)"
             # here-strings, not `echo | grep -q`: under pipefail an early grep
             # exit SIGPIPEs the echo and a real trace would read as "not yet"
-            if grep -qE "(create_alkane|EnterCall|ALKANES EXECUTION TRACE|total_events)" <<< "$trace"; then
+            grep -qE "(ALKANES EXECUTION TRACE|total_events)" <<< "$trace" || continue
+            indexed=1
+            if grep -q "create_alkane" <<< "$trace" && grep -qE "^[[:space:]│]*tx: ${want_tx}\$" <<< "$trace"; then
                 if grep -qE "(❌ revert|error_data:|status: ❌)" <<< "$trace"; then
-                    die "tx $txid REVERTED (inspect: alkanes trace ${txid}:${vout})"
+                    die "deploy of $want_block:$want_tx REVERTED (inspect: alkanes trace ${txid}:${vout})"
                 fi
-                log_ok "confirmed, no revert (trace at vout $vout)"
+                log_ok "confirmed: $want_block:$want_tx created (trace at vout $vout)"
+                DEPLOY_TRACE="$trace"
                 return 0
             fi
         done
+        if (( indexed )); then
+            die "tx $txid is indexed but none of its protostones created $want_block:$want_tx (inspect: alkanes trace ${txid}:<vout>)"
+        fi
         if (( $(date +%s) - start > TX_TIMEOUT )); then
             die "timed out waiting for $txid — re-run later to resume (the txid is in $STATE_FILE)"
         fi
@@ -378,9 +395,10 @@ $dirty"
         if [ ! -f "$WALLET_FILE" ]; then
             "${CLI[@]}" wallet create >/dev/null 2>&1 || die "can't create the regtest wallet"
         fi
-        "${CLI[@]}" bitcoind generatetoaddress 301 "p2tr:0" >/dev/null 2>&1 || die "can't mine on regtest"
+        "${CLI[@]}" --bitcoin-rpc-url "$BITCOIN_RPC_URL" bitcoind generatetoaddress 301 "p2tr:0" >/dev/null 2>&1 \
+            || die "can't mine on regtest (bitcoind at $BITCOIN_RPC_URL)"
         until (( $(indexer_height) >= h0 + 301 )); do
-            (( waited++ < 120 )) || die "regtest indexer didn't catch up"
+            (( waited++ < 300 )) || die "regtest indexer didn't catch up (at $(indexer_height), want $(( h0 + 301 )))"
             sleep 1
         done
     fi
@@ -430,14 +448,15 @@ verify_operator() {
     log_phase "Verify operator 4:$OPERATOR_TX"
     expect_data 'GetName = "Dice Operator"' "$(str_hex 'Dice Operator')" "$OPERATOR_BLOCK" "$OPERATOR_TX" 99
     expect_data 'GetSymbol = "DOP"' "$(str_hex DOP)" "$OPERATOR_BLOCK" "$OPERATOR_TX" 100
-    # Advisory: the keys went to p2tr:0 by construction (pointer v0), but
-    # protorunesbyaddress-backed balance reads can lag (flaky on regtest).
-    local balance
-    balance="$(RUST_LOG=off "${CLI[@]}" alkanes getbalance 2>/dev/null || true)"
-    if grep -q "$OPERATOR_TX" <<< "$balance"; then
-        log_ok "auth keys 4:$OPERATOR_TX show in this wallet"
+    # The keys, from the deploy trace: Init's return goes to pointer v0, this
+    # wallet's p2tr:0 (address-balance APIs lag, and are absent on regtest).
+    local transfers
+    transfers="$(grep -A8 'alkane_transfers' <<< "$DEPLOY_TRACE" || true)"
+    if grep -qE "tx: ${OPERATOR_TX}\$" <<< "$transfers" && grep -qE "amount: ${KEY_SUPPLY}\$" <<< "$transfers"; then
+        log_ok "Init handed $KEY_SUPPLY key units of 4:$OPERATOR_TX to this wallet's p2tr:0"
     else
-        log_warn "couldn't see 4:$OPERATOR_TX via getbalance — check the wallet holds the 3 keys before going on"
+        log_err "the deploy trace doesn't show $KEY_SUPPLY keys of 4:$OPERATOR_TX handed out"
+        VERIFY_FAILED=1
     fi
 }
 
@@ -485,7 +504,7 @@ main() {
         OPERATOR_TXID="$LAST_TXID"
         write_state
     fi
-    wait_for_tx "$OPERATOR_TXID"
+    wait_for_deploy "$OPERATOR_TXID" "$OPERATOR_BLOCK" "$OPERATOR_TX"
     verify_operator
     [ "$VERIFY_FAILED" = "0" ] || die "operator verification failed — NOT deploying the game"
 
@@ -498,7 +517,7 @@ main() {
         write_state
         fresh=1
     fi
-    wait_for_tx "$GAME_TXID"
+    wait_for_deploy "$GAME_TXID" 4 "$GAME_TX"
     verify_game "$fresh"
     [ "$VERIFY_FAILED" = "0" ] || die "game verification failed — inspect: alkanes trace $GAME_TXID:<vout>"
     write_state
@@ -506,14 +525,14 @@ main() {
     log_phase "DEPLOYED"
     cat <<EOF
 
-  operator auth keys  3 × 4:$OPERATOR_TX   txid $OPERATOR_TXID
+  operator auth keys  $KEY_SUPPLY × 4:$OPERATOR_TX   txid $OPERATOR_TXID
   game (template +    4:$GAME_TX   txid $GAME_TXID
     registry + $BET_TOKEN table)
   record              $STATE_FILE
 
   Next:
     1. Commit the record: git add deployments/ && git commit
-    2. Split the 3 keys (4:$OPERATOR_TX) across separate alkanes-aware wallets:
+    2. Split the $KEY_SUPPLY keys (4:$OPERATOR_TX) across separate alkanes-aware wallets:
        one to use, two spares. ANY one is full operator power on every table
        (WithdrawFees, SetExitFee <= 2%), and no more can ever be minted.
     3. The table is dormant until the first Deposit (op 2) seeds the bank.

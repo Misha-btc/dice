@@ -30,6 +30,9 @@ NETWORK="${NETWORK:-regtest}"
 RPC_URL="${RPC_URL:-http://127.0.0.1:18888}"
 WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-dice.json}"
 DEPLOY_PASSWORD="${DEPLOY_PASSWORD:-testtest}"
+# bitcoind itself (docker regtest creds): bulk mining goes here directly —
+# alkanes-jsonrpc caps generatetoaddress at 1 block per call.
+BITCOIN_RPC_URL="${BITCOIN_RPC_URL:-http://bitcoinrpc:bitcoinrpc@127.0.0.1:18443}"
 
 CLI="$ALKANES_CLI -p $NETWORK --jsonrpc-url $RPC_URL --wallet-file $WALLET_FILE --passphrase $DEPLOY_PASSWORD"
 
