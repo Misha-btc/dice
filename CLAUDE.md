@@ -63,7 +63,7 @@ cargo test --lib -- --test-threads=1         # integration tests (alkanes harnes
 ALKANES_RS=~/subfrost/alkanes-rs ./scripts/reset-regtest.sh
 ALKANES_RS=~/subfrost/alkanes-rs ./scripts/deploy-regtest.sh --build
 
-# Mainnet: operator key first, then the game — preflight (no spend) before the real run.
+# Mainnet: the game, then the operator key (keys minted last) — preflight (no spend) first.
 # Rehearse with NETWORK=regtest; the record lands in deployments/mainnet.env.
 DEPLOY_PASSWORD=... FEE_RATE=3 PREFLIGHT_ONLY=1 ./scripts/deploy-mainnet.sh   # game → 4:64206
 ```

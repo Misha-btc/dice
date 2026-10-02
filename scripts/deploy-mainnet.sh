@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Dice — MAINNET deployment: the operator auth key, then the game.
+# Dice — MAINNET deployment: the game, then the operator auth key.
 #
-# Deploys the two production contracts in the only safe order:
-#   1. dice-operator at 4:<OPERATOR_AUTH_ID.tx> (0xDEAD = 57005) — its init
-#      mints the three fee-withdrawal keys to this wallet. The game hardcodes
-#      this id, so it is read from the runtime source, never typed twice.
-#   2. dice-game at 4:$GAME_TX (default 0xFACE = 64206), init with the bet
+# Deploys the two production contracts, operator LAST (owner's call, so no
+# deploy tx spends this wallet's UTXOs after the keys are minted):
+#   1. dice-game at 4:$GAME_TX (default 0xFACE = 64206), init with the bet
 #      token (2:69, FARTANE / H2S); its shares keep the default "Dice"/"DICE".
 #      The template is also the canonical table registry and the H2S table.
-# The game is broadcast ONLY after the operator deploy is confirmed without a
-# revert and answers as "Dice Operator". A reserved slot can't be
-# overwritten (CREATERESERVED onto an occupied slot reverts), so a clean trace
-# of OUR deploy tx proves the key contract at that id is ours.
+#   2. dice-operator at 4:<OPERATOR_AUTH_ID.tx> (0xDEAD = 57005) — its init
+#      mints the three fee-withdrawal keys to this wallet. The game hardcodes
+#      this id, so it is read from the runtime source, never typed twice.
+# The operator goes out only after the game is confirmed and verified. The
+# game trusts 4:0xDEAD from its first block, so the slot is re-checked right
+# before the operator broadcast; whoever held that slot would hold the fee key
+# (fees and the 0..2% exit fee — never LP or player funds). A reserved slot
+# can't be overwritten (CREATERESERVED onto an occupied one reverts), so a
+# clean trace of OUR operator deploy proves the key contract is ours.
 #
 # Hardened like arbuzino/scripts/deploy-coldstern-mainnet.sh:
 #   - FEE_RATE and DEPLOY_PASSWORD required (no silent defaults); the game
@@ -507,24 +510,16 @@ main() {
     local op_cellpack="[3,$OPERATOR_TX,0]:v0:v0"
     local game_cellpack="[3,$GAME_TX,0,$BET_B,$BET_T,0,0]:v0:v0"
     log_phase "Plan"
-    [ -z "$OPERATOR_TXID" ] && log "1. operator: alkanes execute \"$op_cellpack\" --envelope dice_operator.wasm  (~$(est_sats "$OPERATOR_WASM") sats)"
-    [ -z "$GAME_TXID" ] && log "2. game:     alkanes execute \"$game_cellpack\" --envelope dice_game.wasm  (~$(est_sats "$GAME_WASM") sats)"
+    [ -z "$GAME_TXID" ] && log "1. game:     alkanes execute \"$game_cellpack\" --envelope dice_game.wasm  (~$(est_sats "$GAME_WASM") sats)"
+    [ -z "$OPERATOR_TXID" ] && log "2. operator: alkanes execute \"$op_cellpack\" --envelope dice_operator.wasm  (~$(est_sats "$OPERATOR_WASM") sats)"
     log "   (--from p2tr:0 --change p2tr:0 --alkanes-change p2tr:0 --fee-rate $FEE_RATE)"
     if [ "$PREFLIGHT_ONLY" = "1" ]; then
         log_ok "PREFLIGHT_ONLY=1 — stopping here, nothing broadcast"
         exit 0
     fi
 
-    if [ -z "$OPERATOR_TXID" ]; then
-        confirm "the OPERATOR deploy (4:$OPERATOR_TX)"
-        broadcast "$op_cellpack" "$OPERATOR_WASM" "dice-operator (4:$OPERATOR_TX)"
-        OPERATOR_TXID="$LAST_TXID"
-        write_state
-    fi
-    wait_for_deploy "$OPERATOR_TXID" "$OPERATOR_BLOCK" "$OPERATOR_TX"
-    verify_operator
-    [ "$VERIFY_FAILED" = "0" ] || die "operator verification failed — NOT deploying the game"
-
+    # 1. The game. Its init never touches the operator contract — the key id
+    #    is only compared against incoming alkanes later — so it can go first.
     local fresh=0
     if [ -z "$GAME_TXID" ]; then
         slot_occupied 4 "$GAME_TX" && die "4:$GAME_TX got occupied meanwhile — pick another GAME_TX"
@@ -536,7 +531,23 @@ main() {
     fi
     wait_for_deploy "$GAME_TXID" 4 "$GAME_TX"
     verify_game "$fresh"
-    [ "$VERIFY_FAILED" = "0" ] || die "game verification failed — inspect: alkanes trace $GAME_TXID:<vout>"
+    [ "$VERIFY_FAILED" = "0" ] || die "game verification failed — inspect: alkanes trace $GAME_TXID:<vout> (operator NOT deployed)"
+
+    # 2. The operator key, LAST: no deploy tx spends this wallet's UTXOs after
+    #    the keys land. The game already trusts 4:$OPERATOR_TX, so the slot must
+    #    still be free — re-checked right before the broadcast.
+    if [ -z "$OPERATOR_TXID" ]; then
+        if slot_occupied "$OPERATOR_BLOCK" "$OPERATOR_TX"; then
+            die "4:$OPERATOR_TX was taken after the game went live — the game's fee key now belongs to whoever deployed it. Stop and inspect before anything else."
+        fi
+        confirm "the OPERATOR deploy (4:$OPERATOR_TX, mints the $KEY_SUPPLY keys)"
+        broadcast "$op_cellpack" "$OPERATOR_WASM" "dice-operator (4:$OPERATOR_TX)"
+        OPERATOR_TXID="$LAST_TXID"
+        write_state
+    fi
+    wait_for_deploy "$OPERATOR_TXID" "$OPERATOR_BLOCK" "$OPERATOR_TX"
+    verify_operator
+    [ "$VERIFY_FAILED" = "0" ] || die "operator verification failed — inspect: alkanes trace $OPERATOR_TXID:<vout>"
     write_state
 
     log_phase "DEPLOYED"
