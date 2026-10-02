@@ -12,7 +12,7 @@ use dice_game_runtime::DiceBase;
 
 #[derive(MessageDispatch)]
 pub enum DiceMessage {
-    /// One-time init: the bet/bank token id (mainnet: 2:490) and the share
+    /// One-time init: the bet/bank token id (mainnet: 2:69, H2S) and the share
     /// token's name/symbol (u128-packed LE strings, `0` = "Dice"/"DICE"
     /// defaults) — immutable afterwards, like everything else
     /// (the 1% edge and the 1000 min-bet are compiled in). **Factory-ready**:
@@ -89,10 +89,11 @@ pub enum DiceMessage {
     #[opcode(6)]
     WithdrawFees,
 
-    /// Operator-only: set this table's live LP-exit fee to `bps` (0..=200).
-    /// Reverts if it exceeds 200 (the 2% ceiling is immutable — even the
-    /// operator can never make exits cost more than 2%). Requires the operator
-    /// auth key (returned). `bps = 0` = free exits.
+    /// Operator-only: schedule this table's LP-exit fee to become `bps`
+    /// (0..=200) 1008 blocks (~a week) from now — every change waits, up or
+    /// down; a newer call replaces a pending one. Reverts above 200 (the 2%
+    /// ceiling is immutable — even the operator can never make exits cost more
+    /// than 2%). Requires the operator auth key (returned). `bps = 0` = free exits.
     #[opcode(7)]
     SetExitFee { bps: u128 },
 
@@ -135,6 +136,14 @@ pub enum DiceMessage {
     #[opcode(105)]
     #[returns(Vec<u8>)]
     ViewTableOf { token_block: u128, token_tx: u128 },
+
+    /// View: the LP-exit fee countdown — `(fee_now, fee_next,
+    /// activation_height, delay)` as 4×u128 LE; nothing pending =
+    /// `fee_next == fee_now`, `activation_height == 0`. Evaluated at the height
+    /// the view is simulated at.
+    #[opcode(106)]
+    #[returns(Vec<u8>)]
+    ViewExitFee,
 }
 
 #[derive(Default)]

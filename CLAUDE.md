@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Dice** is an instant roll-under dice game on Bitcoin via the ALKANES metaprotocol.
 The bet/bank currency is a single alkane fixed at init and immutable after —
-**mainnet: 2:490**; regtest/tests: DIESEL 2:0 (the only harness-mintable token).
+**mainnet: 2:69** (FARTANE, symbol H2S — the template's own table, shares "Dice"/"DICE");
+regtest/tests: DIESEL 2:0 (the only harness-mintable token).
 Everything is immutable — the 1% edge is a compile-time constant, there is no
 privileged capability of any kind (an auth-token edge-lowering knob existed
 2026-08-26 → removed 2026-08-27).
@@ -28,9 +29,11 @@ core design goal.
 rake — the whole 1% edge still goes to LPs. The operator earns only when an LP
 *withdraws*: the current fee (`/exit_bps`, 0..200 bps) of the gross payout is
 retained in the table's own `/fee_accum` (LP gets the rest). The fee is
-**operator-adjustable** via `SetExitFee` (opcode 7) but **can never exceed the
-compile-time `EXIT_BPS_MAX = 200` (2%)** — a hard, immutable LP guarantee; 0 is
-allowed (free exits). Each table holds its own fee in its own single bet token —
+**operator-adjustable** via `SetExitFee` (opcode 7) — but every change, up or
+down, only takes effect **`EXIT_FEE_DELAY = 1008` blocks (~a week) later**, so
+LPs always see it coming — and it **can never exceed the compile-time
+`EXIT_BPS_MAX = 200` (2%)**, a hard, immutable LP guarantee; 0 is allowed (free
+exits). Each table holds its own fee in its own single bet token —
 no shared treasury, no cross-token registry. The operator collects it per-table
 via `WithdrawFees` (opcode 6). Both ops are gated by a **hardcoded auth key**
 (`OPERATOR_AUTH_ID = 4:0xDEAD` = 57005, a minimal standalone token: three
@@ -125,7 +128,8 @@ Plus one constant in `dice-game-runtime` (not math):
 
 ```rust
 EXIT_BPS_MAX = 200         // 2% — IMMUTABLE ceiling on the LP-exit fee (hard LP guarantee)
-/exit_bps (storage)        // live fee 0..200, operator-set via SetExitFee; init defaults to 200
+EXIT_FEE_DELAY = 1008      // blocks (~1 week) from SetExitFee to the new fee taking effect — any change
+/exit_bps (storage)        // fee in force 0..200 (init 200); a scheduled change lives in /exit_bps_next|_at
 OPERATOR_AUTH_ID = 4:0xDEAD // 57005; WithdrawFees + SetExitFee need ANY one of its 3 key units (all tables)
 ```
 
@@ -147,13 +151,14 @@ enforced in `Roll`, proven in `dice-math` tests incl. a 200k-bet no-ruin sim).
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
 | 6 | `WithdrawFees` | — | **operator-only** (attach the `OPERATOR_AUTH_ID` key, spent-and-returned); pays this table's whole `/fee_accum` (bet token) to the caller and zeroes it. Reverts on a missing key or zero balance. No external call |
-| 7 | `SetExitFee` | `bps` | **operator-only** (auth key, returned); set `/exit_bps = bps`, reverts if `bps > 200` (the 2% ceiling is immutable). `0` = free exits |
+| 7 | `SetExitFee` | `bps` | **operator-only** (auth key, returned); SCHEDULES the fee to become `bps` 1008 blocks later (any change, up or down); a newer call replaces a pending one and restarts the countdown (schedule the current fee to cancel); reverts if `bps > 200` (the 2% ceiling is immutable). `0` = free exits |
 | 99/100 | `GetName`/`GetSymbol` | — | "Dice" / "DICE" — **wallet convention, load-bearing** |
-| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 4 is the live fee |
+| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 4 is the fee in force at the height the view runs at |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge, t_min, t_max, token_block, token_tx, exit_bps_max)` — field 7 is the immutable 2% fee ceiling |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
+| 106 | `ViewExitFee` | — | `(fee_now, fee_next, activation_height, delay)` — the countdown; nothing pending = `fee_next == fee_now`, height 0. Views evaluate at the height they're simulated at (the test harness's `call_view` runs at 0 — use a parcel with a height) |
 
 ### dice-operator (4:0xDEAD = 57005) — fee-withdrawal auth key
 
@@ -171,7 +176,7 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
 
 ```
 /initialized       u8
-/bet_token         AlkaneId (immutable init param — mainnet 2:490)
+/bet_token         AlkaneId (immutable init param — mainnet 2:69)
 /name, /symbol     bytes (immutable init params — per-instance wallet identity)
 (min_bet: compile-time const 1000, not stored)
 /table/{token_id}  AlkaneId (canonical-table registry; template-only, CreateTable-only writer)
@@ -180,7 +185,9 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
 /total_shares      u128  (DICE supply)
 /last_win_height   u128  (per-block budget bookkeeping)
 /paid_this_block   u128  (Σ realized net payouts at last_win_height)
-/exit_bps          u128  (live LP-exit fee 0..200; operator-set via SetExitFee, init=200)
+/exit_bps          u128  (LP-exit fee in force 0..200, init=200)
+/exit_bps_next     u128  (fee scheduled by SetExitFee)
+/exit_bps_at       u128  (its activation height = schedule height + 1008; 0 = none)
 /fee_accum         u128  (accrued LP-exit fees, bet-token; paid out by WithdrawFees)
 /last_roll_txid    [u8; 32] (txid of the last Roll on this table — one Roll per tx)
 /total_bets, /total_wagered, /total_won   u128  (stats)
@@ -240,9 +247,11 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
   `SetExitFee`** (both auth-gated; they only touch fee revenue, never the bank or
   LP shares), **rounding favors the bank**, **Kelly + block caps** bound every
   payout.
-- **Exit-fee safety**: the fee is capped at the immutable `EXIT_BPS_MAX` (2%) — 
-  `SetExitFee` reverts above it and `exit_bps()` clamps defensively, so no operator
-  action can ever make exiting cost more than 2%. The fee accrues in the table's
+- **Exit-fee safety**: the fee is capped at the immutable `EXIT_BPS_MAX` (2%) —
+  `SetExitFee` reverts above it and `exit_bps_at()` clamps defensively, so no
+  operator action can ever make exiting cost more than 2% — and no change applies
+  before `EXIT_FEE_DELAY` (1008 blocks) has passed, so LPs can always exit at the
+  old fee ahead of an increase. The fee accrues in the table's
   own `/fee_accum` and `WithdrawFees` pays it from the balance the game already
   holds — no external call, nothing to strand. LP `Withdraw` never touches the auth
   path, so the operator (or a lost key) can never block or freeze an LP exit.
@@ -257,13 +266,16 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
   wrapping: a quotient past u128 is refused (`mul_div_checked`), an oversized
   deposit into an empty table is refused, an overflowing payout is unbounded
   exposure so the clamp still holds**.
-- **Integration (29, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
+- **Integration (31, `cargo test --lib -- --test-threads=1`)**: deposit/withdraw/
   donate wiring incl. change + slippage floor + revert refunds, **withdraw nets
   98% with the 2% fee held in /fee_accum** (asserted via ViewBank field 3)
   (`lp_test`); exit fee — accrue on withdraw → operator collects via auth-gated
   `WithdrawFees` (keyless attempt reverts; empty-fee reverts and refunds the key);
   **`SetExitFee` lowers the cut (1% nets 99%), 0 = free exit, > 200 reverts,
-  keyless reverts**, **init mints 3 keys and any single unit authorizes**
+  keyless reverts**, **a fee change waits 1008 blocks (a withdrawal one block
+  before activation pays the old fee, at activation the new one), a newer change
+  replaces a pending one, a cut waits too, a matured change survives being
+  scheduled over**, **init mints 3 keys and any single unit authorizes**
   (`exit_fee_test`);
   forced win/lose settlement, **a second Roll in the same tx reverts (one Roll per
   tx, full refund)**, `amount=0` bets-everything sentinel,
@@ -279,4 +291,4 @@ conventions — but is a **standalone repo** with no runtime link to arbuzino
 arbuzino's accrue-then-sweep bridge: each table keeps its own single-token fee and
 the operator pulls it directly with an auth key — no sink contract holding funds,
 no external call. **LPs earn the edge, the operator earns the 2% LP-exit fee.**
-Bet currency differs too: 2:490 on mainnet vs Fireball's DIESEL.
+Bet currency differs too: 2:69 (H2S) on mainnet vs Fireball's DIESEL.

@@ -6,8 +6,8 @@
 #      mints the three fee-withdrawal keys to this wallet. The game hardcodes
 #      this id, so it is read from the runtime source, never typed twice.
 #   2. dice-game at 4:$GAME_TX (default 0xFACE = 64206), init with the bet
-#      token (2:490). The template is also the canonical table registry and
-#      the 2:490 table.
+#      token (2:69, FARTANE / H2S); its shares keep the default "Dice"/"DICE".
+#      The template is also the canonical table registry and the H2S table.
 # The game is broadcast ONLY after the operator deploy is confirmed without a
 # revert and answers as "Dice Operator". A reserved slot can't be
 # overwritten (CREATERESERVED onto an occupied slot reverts), so a clean trace
@@ -64,9 +64,12 @@ ASSUME_YES="${ASSUME_YES:-0}"
 case "$NETWORK" in
     mainnet)
         RPC_URL="${RPC_URL:-https://mainnet.subfrost.io/v4/subfrost}"
-        ESPLORA_URL="${ESPLORA_URL:-https://mempool.space/api}"
+        # blockstream, not mempool.space: alkanes-cli (both the develop build and
+        # the one fire deployed with) fails to decode mempool.space's UTXO
+        # responses ("error decoding response body", 2026-10-01)
+        ESPLORA_URL="${ESPLORA_URL:-https://blockstream.info/api}"
         WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-dice-mainnet.json}"
-        BET_TOKEN="${BET_TOKEN:-2:490}"
+        BET_TOKEN="${BET_TOKEN:-2:69}"            # FARTANE, symbol H2S
         STATE_FILE="$PROJECT_DIR/deployments/mainnet.env"
         TX_TIMEOUT="${TX_TIMEOUT:-7200}"
         ;;
@@ -98,6 +101,8 @@ OPERATOR_TX="$(( $(echo "$OP_LINE" | sed -E 's/.*tx: (0x[0-9A-Fa-f]+|[0-9]+) .*/
 [ "$OPERATOR_BLOCK" = "4" ] || { echo "ERROR: OPERATOR_AUTH_ID must be a reserved 4:N id"; exit 1; }
 [ "$GAME_TX" != "$OPERATOR_TX" ] || { echo "ERROR: GAME_TX can't be the operator slot $OPERATOR_TX"; exit 1; }
 KEY_SUPPLY="$(sed -nE 's/^pub const KEY_SUPPLY: u128 = ([0-9]+);.*/\1/p' "$PROJECT_DIR/alkanes/dice-operator/src/lib.rs")"
+EXIT_FEE_DELAY="$(sed -nE 's/^pub const EXIT_FEE_DELAY: u128 = ([0-9]+);.*/\1/p' "$RUNTIME_SRC")"
+[ -n "$EXIT_FEE_DELAY" ] || { echo "ERROR: can't read EXIT_FEE_DELAY from $RUNTIME_SRC"; exit 1; }
 [ -n "$KEY_SUPPLY" ] || { echo "ERROR: can't read KEY_SUPPLY from alkanes/dice-operator/src/lib.rs"; exit 1; }
 
 ALKANES_RS="${ALKANES_RS:-$HOME/subfrost/alkanes-rs}"
@@ -110,6 +115,14 @@ if [ -z "$ALKANES_CLI" ]; then
     done
 fi
 [ -n "$ALKANES_CLI" ] || { echo "ERROR: alkanes-cli not found (set ALKANES_CLI= or ALKANES_RS=)"; exit 1; }
+
+# alkanes-cli (develop) caches getbytecode/meta results FOREVER in
+# ~/.alkanes/cache.sqlite3, keyed by network, not by chain: after a regtest reset
+# it reports a stale contract, and a slot read as empty once can stay "empty".
+# Every run gets an empty cache of its own; the shared one is left alone.
+ALKANES_CACHE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dice-deploy-cache.XXXXXX")"
+export ALKANES_CACHE_DIR
+trap 'rm -rf "$ALKANES_CACHE_DIR"' EXIT
 
 CLI=(
     "$ALKANES_CLI"
@@ -404,7 +417,9 @@ $dirty"
     fi
 
     log "checking RPC + wallet ($WALLET_FILE)..."
-    "${CLI[@]}" wallet balance >/dev/null 2>&1 || die "wallet not loadable (bad passphrase or RPC?)"
+    local wout
+    wout="$("${CLI[@]}" wallet balance 2>&1)" \
+        || die "wallet balance failed: $(grep -m1 -E 'Error|error' <<< "$wout" | cut -c1-200) (wallet file, RPC_URL or ESPLORA_URL)"
     local need=0 have utxos
     [ -z "$OPERATOR_TXID" ] && need=$(( need + $(est_sats "$OPERATOR_WASM") ))
     [ -z "$GAME_TXID" ] && need=$(( need + $(est_sats "$GAME_WASM") ))
@@ -423,7 +438,7 @@ $dirty"
     else
         log_warn "bet token $BET_TOKEN doesn't answer GetName (99)"
     fi
-    [ "$NETWORK" = "mainnet" ] && [ "$BET_TOKEN" != "2:490" ] && log_warn "BET_TOKEN is $BET_TOKEN, NOT the documented mainnet 2:490 — the bet token is immutable!"
+    [ "$NETWORK" = "mainnet" ] && [ "$BET_TOKEN" != "2:69" ] && log_warn "BET_TOKEN is $BET_TOKEN, NOT the documented mainnet 2:69 (H2S) — the bet token is immutable!"
 
     if [ -n "$OPERATOR_TXID" ]; then
         log_ok "operator: recorded as broadcast (txid $OPERATOR_TXID) — will verify, not redeploy"
@@ -471,6 +486,8 @@ verify_game() {  # fresh=1 right after this run deployed it
     expect_data "ViewTableOf($BET_TOKEN) = 4:$GAME_TX" "$(u128s_hex 4 "$GAME_TX")" 4 "$GAME_TX" 105 "$BET_B" "$BET_T"
     if [ "$1" = "1" ]; then
         expect_data "ViewBank = (0, 0, 0, 200): empty bank, 2% exit fee" "$(u128s_hex 0 0 0 200)" 4 "$GAME_TX" 101
+        expect_data "ViewExitFee = (200, 200, 0, $EXIT_FEE_DELAY): no change scheduled, ${EXIT_FEE_DELAY}-block delay" \
+            "$(u128s_hex 200 200 0 "$EXIT_FEE_DELAY")" 4 "$GAME_TX" 106
     fi
 }
 

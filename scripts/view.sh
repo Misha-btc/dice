@@ -10,11 +10,12 @@
 #   ./scripts/view.sh config            # (min_bet, edge, t_min, t_max, token, exit_bps_max)
 #   ./scripts/view.sh max-bet <target>  # (max_bet, max_net_profit) at current bank
 #   ./scripts/view.sh table-of <b> <t>  # canonical table for token b:t (zeros = none)
+#   ./scripts/view.sh exit-fee          # (fee_now, fee_next, activation_height, delay)
 
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-    echo "Usage: $0 <bank|stats|config|max-bet <target>>"
+    echo "Usage: $0 <bank|stats|config|exit-fee|max-bet <target>|table-of <b> <t>>"
     exit 1
 fi
 
@@ -27,6 +28,7 @@ case "$1" in
     bank)   OPCODE=101 ;;
     stats)  OPCODE=102 ;;
     config) OPCODE=103 ;;
+    exit-fee) OPCODE=106 ;;
     max-bet)
         if [ $# -lt 2 ]; then
             echo "Usage: $0 max-bet <target>"
@@ -141,6 +143,7 @@ LABELS = {
     "config":  ["min_bet", "edge_bps", "t_min", "t_max", "token_block", "token_tx", "exit_bps_max"],
     "max-bet": ["max_bet", "max_net_profit"],
     "table-of": ["table_block", "table_tx"],
+    "exit-fee": ["fee_now", "fee_next", "activation_height", "delay_blocks"],
 }
 for i, lbl in enumerate(LABELS["$1"]):
     v = u128_le(ret[i*16:(i+1)*16])

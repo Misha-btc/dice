@@ -10,7 +10,7 @@ GAME_TX=64206              # 0xFACE — the same slot as mainnet
 OPERATOR_BLOCK=4
 OPERATOR_TX=57005          # 0xDEAD
 # Bet/bank currency (immutable init param of the game). Regtest defaults to
-# DIESEL 2:0 (the only free-mintable token there); MAINNET uses 2:490 —
+# DIESEL 2:0 (the only free-mintable token there); MAINNET uses 2:69 (H2S) —
 # override with BET_TOKEN_BLOCK/BET_TOKEN_TX.
 BET_TOKEN_BLOCK="${BET_TOKEN_BLOCK:-2}"
 BET_TOKEN_TX="${BET_TOKEN_TX:-0}"

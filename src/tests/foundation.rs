@@ -1,6 +1,6 @@
 //! Foundation helpers: deploy the Dice game and provide the bet token.
 //! The harness free-mints DIESEL (2:0), so tests init the game with DIESEL
-//! as the bet token; mainnet passes its own token id (2:490) at deploy —
+//! as the bet token; mainnet passes its own token id (2:69) at deploy —
 //! the id is an immutable init parameter precisely so the harness can test
 //! with a mintable currency.
 

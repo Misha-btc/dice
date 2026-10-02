@@ -28,7 +28,10 @@ const OP_WITHDRAW_FEES: u128 = 6;
 const OP_SET_EXIT_FEE: u128 = 7;
 const VIEW_BANK: u128 = 101;
 const VIEW_CONFIG: u128 = 103;
+const VIEW_EXIT_FEE: u128 = 106;
 const EXIT_BPS_MAX: u128 = 200;
+/// Blocks between SetExitFee and the new fee taking effect (runtime EXIT_FEE_DELAY).
+const EXIT_FEE_DELAY: u32 = 1008;
 const FUEL: u64 = 100_000_000;
 
 fn op_outpoint(block: &bitcoin::Block) -> OutPoint {
@@ -51,6 +54,19 @@ fn simulate(inputs: Vec<u128>, runes: Vec<RuneTransfer>) -> Result<Vec<(AlkaneId
 
 fn rune(id: AlkaneId, value: u128) -> RuneTransfer {
     RuneTransfer { id: id.into(), value }
+}
+
+/// A view simulated at an explicit block height: the exit fee in force depends
+/// on the height, and the harness's `call_view` runs at height 0.
+fn view_at(op: u128, height: u32) -> Vec<u128> {
+    let mut parcel = alkanes::view::plain_parcel_from_cellpack(Cellpack { target: game_id(), inputs: vec![op] });
+    parcel.height = height as u64;
+    alkanes::view::simulate_parcel(&parcel, FUEL)
+        .map(|(resp, _gas)| resp.data)
+        .unwrap_or_default()
+        .chunks_exact(16)
+        .map(|c| u128::from_le_bytes(c.try_into().unwrap()))
+        .collect()
 }
 
 fn view(op: u128) -> Vec<u128> {
@@ -184,8 +200,15 @@ fn deploy_and_set_fee(bps: u128) -> Result<(OutPoint, u128, AlkaneId, OutPoint, 
     );
     index_block(&sf, h)?;
     key = op_outpoint(&sf); // the key rode back here
-    h += 1;
-    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(bps), "ViewBank field 4 == set fee");
+    // Scheduled, not applied: the new fee takes effect EXIT_FEE_DELAY blocks later.
+    let at = h + EXIT_FEE_DELAY;
+    assert_eq!(
+        view_at(VIEW_EXIT_FEE, h),
+        vec![EXIT_BPS_MAX, bps, at as u128, EXIT_FEE_DELAY as u128],
+        "pending change visible with its activation height"
+    );
+    h = at; // wait it out
+    assert_eq!(view_at(VIEW_BANK, h).get(3).copied(), Some(bps), "ViewBank field 4 == set fee once active");
     Ok((diesel_op, minted, operator, key, h))
 }
 
@@ -282,7 +305,7 @@ fn test_set_exit_fee_cannot_exceed_max_or_skip_auth() -> Result<()> {
     h += 1;
     assert_eq!(view(VIEW_BANK).get(3).copied(), Some(EXIT_BPS_MAX), "keyless set rejected");
 
-    // A valid in-range set with the key sticks.
+    // A valid in-range set with the key is scheduled — applied a week later.
     let ok = create_op_block_with_token_input(
         h,
         Cellpack { target: game_id(), inputs: vec![OP_SET_EXIT_FEE, 50] },
@@ -291,7 +314,125 @@ fn test_set_exit_fee_cannot_exceed_max_or_skip_auth() -> Result<()> {
         1,
     );
     index_block(&ok, h)?;
-    assert_eq!(view(VIEW_BANK).get(3).copied(), Some(50), "in-range set applied");
+    assert_eq!(view_at(VIEW_BANK, h).get(3).copied(), Some(EXIT_BPS_MAX), "not applied yet");
+    assert_eq!(view_at(VIEW_EXIT_FEE, h).get(1).copied(), Some(50), "scheduled");
+    assert_eq!(view_at(VIEW_BANK, h + EXIT_FEE_DELAY).get(3).copied(), Some(50), "applied after the delay");
+    Ok(())
+}
+
+/// Schedule a fee change with the operator key at height `h`; returns the
+/// outpoint the key rode back to.
+fn set_exit_fee_at(h: u32, bps: u128, key: OutPoint, operator: AlkaneId) -> Result<OutPoint> {
+    let sf = create_op_block_with_token_input(
+        h,
+        Cellpack { target: game_id(), inputs: vec![OP_SET_EXIT_FEE, bps] },
+        key,
+        operator,
+        1,
+    );
+    index_block(&sf, h)?;
+    Ok(op_outpoint(&sf))
+}
+
+/// A withdrawal one block BEFORE the activation height still pays the old fee;
+/// one AT the activation height pays the new one.
+#[test]
+fn test_exit_fee_change_waits_the_delay() -> Result<()> {
+    clear_test_environment();
+    let deploy = deploy_dice()?;
+    let mut h = deploy.last_height;
+    let (operator, key, next_h) = deploy_operator(h)?;
+    h = next_h;
+    let (minted, diesel_op) = mint_diesel(h)?;
+    h += 1;
+
+    let amount = 200_000_000u128;
+    let shares = shares_for_deposit(amount, 0, 0);
+    let dep = create_op_block_with_token_input(
+        h,
+        Cellpack { target: game_id(), inputs: vec![OP_DEPOSIT, amount] },
+        diesel_op,
+        DIESEL_ID,
+        minted,
+    );
+    index_block(&dep, h)?;
+    let dep_out = op_outpoint(&dep);
+    h += 1;
+
+    let set_h = h;
+    set_exit_fee_at(set_h, 100, key, operator)?; // 2% -> 1%, a week from now
+    let at = set_h + EXIT_FEE_DELAY;
+
+    // Half the shares one block before activation: still 2%.
+    let half = shares / 2;
+    let wd1 = create_op_block_with_token_input(
+        at - 1,
+        Cellpack { target: game_id(), inputs: vec![OP_WITHDRAW, half, 0] },
+        dep_out,
+        game_id(),
+        half,
+    );
+    index_block(&wd1, at - 1)?;
+    let gross1 = withdraw_payout(half, amount, shares);
+    let fee1 = gross1 * 200 / 10_000;
+    assert_eq!(view(VIEW_BANK).get(2).copied(), Some(fee1), "before activation: the old 2%");
+
+    // The other half at the activation height: 1%.
+    let wd2 = create_op_block_with_token_input(
+        at,
+        Cellpack { target: game_id(), inputs: vec![OP_WITHDRAW, shares - half, 0] },
+        op_outpoint(&wd1),
+        game_id(),
+        shares - half,
+    );
+    index_block(&wd2, at)?;
+    let gross2 = withdraw_payout(shares - half, amount - gross1, shares - half);
+    let fee2 = gross2 * 100 / 10_000;
+    assert_eq!(view(VIEW_BANK).get(2).copied(), Some(fee1 + fee2), "from activation: the new 1%");
+    assert_eq!(
+        view_at(VIEW_EXIT_FEE, at),
+        vec![100, 100, 0, EXIT_FEE_DELAY as u128],
+        "matured: nothing pending"
+    );
+    test_log!("[EXIT] delay: fee1 {} at 2%, fee2 {} at 1%", fee1, fee2);
+    Ok(())
+}
+
+/// Every change waits — a cut too; a newer change replaces a pending one and
+/// restarts the countdown; a matured change survives being scheduled over.
+#[test]
+fn test_exit_fee_schedule_replace_and_fold() -> Result<()> {
+    clear_test_environment();
+    let deploy = deploy_dice()?;
+    let mut h = deploy.last_height;
+    let (operator, key, next_h) = deploy_operator(h)?;
+    h = next_h;
+
+    // A cut to 0 waits the full delay as well.
+    let h0 = h;
+    let key = set_exit_fee_at(h0, 0, key, operator)?;
+    assert_eq!(view_at(VIEW_BANK, h0 + EXIT_FEE_DELAY - 1).get(3).copied(), Some(EXIT_BPS_MAX), "cut not active yet");
+    assert_eq!(view_at(VIEW_BANK, h0 + EXIT_FEE_DELAY).get(3).copied(), Some(0), "cut active after the delay");
+
+    // Before it matures, schedule 150 instead: the 0 never lands.
+    let h1 = h0 + 500;
+    let key = set_exit_fee_at(h1, 150, key, operator)?;
+    assert_eq!(
+        view_at(VIEW_EXIT_FEE, h1),
+        vec![EXIT_BPS_MAX, 150, (h1 + EXIT_FEE_DELAY) as u128, EXIT_FEE_DELAY as u128],
+        "replaced, countdown restarted"
+    );
+    assert_eq!(view_at(VIEW_BANK, h0 + EXIT_FEE_DELAY).get(3).copied(), Some(EXIT_BPS_MAX), "the replaced 0 never applies");
+    assert_eq!(view_at(VIEW_BANK, h1 + EXIT_FEE_DELAY).get(3).copied(), Some(150), "the newer change applies");
+
+    // After 150 matured, scheduling 100 keeps 150 as the fee until 100 lands.
+    let h2 = h1 + EXIT_FEE_DELAY + 7;
+    set_exit_fee_at(h2, 100, key, operator)?;
+    assert_eq!(
+        view_at(VIEW_EXIT_FEE, h2),
+        vec![150, 100, (h2 + EXIT_FEE_DELAY) as u128, EXIT_FEE_DELAY as u128],
+        "matured 150 folded into the current fee"
+    );
     Ok(())
 }
 

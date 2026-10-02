@@ -7,7 +7,7 @@
 //! pending liabilities ever** — which is what makes open-ended LP
 //! deposit/withdraw safe.
 //!
-//! The bet/bank currency is a single alkane fixed at init (mainnet: 2:490)
+//! The bet/bank currency is a single alkane fixed at init (mainnet: 2:69, H2S)
 //! and immutable afterwards. There is **no protocol fee and no external
 //! sink**: the whole 1% edge (a compile-time constant — no admin, no auth
 //! token, no knob of any kind) accrues to the bank — only LPs earn.
@@ -56,12 +56,19 @@ pub const MIN_BET: u128 = 1_000;
 
 /// The IMMUTABLE ceiling on the LP-exit fee: 2%, compiled in. The live fee
 /// (`/exit_bps`) is operator-adjustable within `[0, EXIT_BPS_MAX]` via
-/// `SetExitFee`, but can NEVER exceed this — so LPs have a hard guarantee that
-/// exiting will never cost more than 2%, no matter what the operator does.
+/// `SetExitFee` (each change taking effect `EXIT_FEE_DELAY` blocks later), but
+/// can NEVER exceed this — so LPs have a hard guarantee that exiting will never
+/// cost more than 2%, no matter what the operator does.
 /// Players never pay a house rake (the whole 1% edge goes to LPs); only LPs pay
 /// this, once, on the way out. Each table accrues its own fee in its own bet
 /// token (`/fee_accum`); the operator collects it per-table via `WithdrawFees`.
 pub const EXIT_BPS_MAX: u128 = 200;
+
+/// Blocks between `SetExitFee` and the new fee taking effect: 1008 ≈ one week at
+/// 144 blocks/day. IMMUTABLE, and EVERY change waits it out, up or down: LPs
+/// always see a fee change coming a week ahead (and can exit at the old fee
+/// before an increase lands).
+pub const EXIT_FEE_DELAY: u128 = 1008;
 
 /// The operator auth key, 4:0xDEAD (57005) — hardcoded, shared by the template
 /// and every clone. `WithdrawFees`/`SetExitFee` act only for a caller who
@@ -104,22 +111,24 @@ fn write_alkane_id(mut p: StoragePointer, id: &AlkaneId) {
     p.set(Arc::new(v));
 }
 
-/// The immutable bet/bank currency, set once at init (mainnet: 2:490).
+/// The immutable bet/bank currency, set once at init (mainnet: 2:69, H2S).
 fn bet_token() -> Result<AlkaneId> {
     read_alkane_id(ptr("/bet_token"))
 }
 
-/// The live LP-exit fee in bps, operator-adjustable but ALWAYS clamped to the
-/// immutable `EXIT_BPS_MAX` ceiling (defensive — `SetExitFee` already rejects
-/// anything above it, and init seeds it to the max). A stored 0 is a valid fee
-/// (free exits).
-fn exit_bps() -> u128 {
-    let v = read_u128(ptr("/exit_bps"));
-    if v > EXIT_BPS_MAX {
-        EXIT_BPS_MAX
+/// The LP-exit fee in force at height `h`, in bps: the scheduled fee
+/// (`/exit_bps_next`) once its activation height (`/exit_bps_at`, 0 = nothing
+/// scheduled) is reached, else the current one (`/exit_bps`). ALWAYS clamped to
+/// the immutable `EXIT_BPS_MAX` ceiling (defensive — `SetExitFee` already rejects
+/// anything above it, and init seeds the max). A 0 is a valid fee (free exits).
+fn exit_bps_at(h: u128) -> u128 {
+    let at = read_u128(ptr("/exit_bps_at"));
+    let v = if at != 0 && h >= at {
+        read_u128(ptr("/exit_bps_next"))
     } else {
-        v
-    }
+        read_u128(ptr("/exit_bps"))
+    };
+    v.min(EXIT_BPS_MAX)
 }
 
 /// Registry slot for the canonical table of `token`. Lives in the CANONICAL
@@ -208,8 +217,8 @@ pub trait DiceBase: AlkaneResponder {
         write_alkane_id(ptr("/bet_token"), &token);
         write_u128(ptr("/bank"), 0);
         write_u128(ptr("/total_shares"), 0);
-        // Launch exit fee = the 2% max; the operator can lower it (down to 0)
-        // via SetExitFee, never raise it above EXIT_BPS_MAX.
+        // Launch exit fee = the 2% max; the operator can change it (down to 0)
+        // via SetExitFee — a week later, never above EXIT_BPS_MAX.
         write_u128(ptr("/exit_bps"), EXIT_BPS_MAX);
 
         // Per-instance wallet identity (clones must be tellable apart).
@@ -633,8 +642,10 @@ pub trait DiceBase: AlkaneResponder {
         // LP-exit fee for the operator: split off the current fee (0..2%) from
         // the gross payout, keep it in the contract (bet token) as /fee_accum,
         // pay the LP the rest. The min_payout slippage floor applies to what the
-        // LP actually gets. `exit_bps()` is clamped to the immutable 2% ceiling.
-        let fee = mul_div(payout, exit_bps(), BPS);
+        // LP actually gets. The fee is the one in force at THIS block (a scheduled
+        // change applies only from its activation height), clamped to the
+        // immutable 2% ceiling.
+        let fee = mul_div(payout, exit_bps_at(self.height() as u128), BPS);
         let lp_amount = payout - fee;
         if lp_amount < min_payout {
             return Err(anyhow!(
@@ -725,10 +736,13 @@ pub trait DiceBase: AlkaneResponder {
 
     // ---- SetExitFee ----
 
-    /// Operator-only: set this table's live LP-exit fee to `bps`, which must be
-    /// in `[0, EXIT_BPS_MAX]` (2%). Reverts if it exceeds the ceiling — the 2%
-    /// cap is immutable, so even the operator can never make exiting cost more.
-    /// 0 is allowed (free exits). Auth is the `OPERATOR_AUTH_ID` key, returned.
+    /// Operator-only: SCHEDULE this table's LP-exit fee to become `bps`
+    /// `EXIT_FEE_DELAY` (1008) blocks from now — every change waits, up or down,
+    /// so LPs always see it a week ahead. `bps` must be in `[0, EXIT_BPS_MAX]`
+    /// (2%): above the immutable ceiling reverts. A newer call replaces a
+    /// still-pending change and restarts the countdown; scheduling the current
+    /// fee is how a pending change is cancelled. Auth is the `OPERATOR_AUTH_ID`
+    /// key, returned.
     fn set_exit_fee(&self, bps: u128) -> Result<CallResponse> {
         self.require_operator()?;
         if bps > EXIT_BPS_MAX {
@@ -738,7 +752,12 @@ pub trait DiceBase: AlkaneResponder {
                 EXIT_BPS_MAX
             ));
         }
-        write_u128(ptr("/exit_bps"), bps);
+        let h = self.height() as u128;
+        // Fold a change that has already matured into the current fee before
+        // scheduling over it, so replacing the pending slot never loses it.
+        write_u128(ptr("/exit_bps"), exit_bps_at(h));
+        write_u128(ptr("/exit_bps_next"), bps);
+        write_u128(ptr("/exit_bps_at"), h.saturating_add(EXIT_FEE_DELAY));
         let context = self.context()?;
         Ok(CallResponse::forward(&context.incoming_alkanes))
     }
@@ -810,7 +829,8 @@ pub trait DiceBase: AlkaneResponder {
     /// `(bank, total_shares, fee_accum, exit_bps)` as 4×u128 LE (64 bytes).
     /// Share price is `(bank + 1) / (total_shares + 10^6)` (virtual offset).
     /// `fee_accum` is the operator's accrued exit fee awaiting `WithdrawFees`;
-    /// `exit_bps` is the live LP-exit fee (0..EXIT_BPS_MAX, operator-set).
+    /// `exit_bps` is the LP-exit fee in force at the height this view runs at
+    /// (0..EXIT_BPS_MAX) — see `ViewExitFee` for a scheduled change.
     fn view_bank(&self) -> Result<CallResponse> {
         let context = self.context()?;
         let mut response = CallResponse::forward(&context.incoming_alkanes);
@@ -818,7 +838,34 @@ pub trait DiceBase: AlkaneResponder {
         out.extend_from_slice(&read_u128(ptr("/bank")).to_le_bytes());
         out.extend_from_slice(&read_u128(ptr("/total_shares")).to_le_bytes());
         out.extend_from_slice(&read_u128(ptr("/fee_accum")).to_le_bytes());
-        out.extend_from_slice(&exit_bps().to_le_bytes());
+        out.extend_from_slice(&exit_bps_at(self.height() as u128).to_le_bytes());
+        response.data = out;
+        Ok(response)
+    }
+
+    /// The LP-exit fee and its countdown: `(fee_now, fee_next, activation_height,
+    /// delay)` as 4×u128 LE (64 bytes). `fee_now` is the fee in force at the
+    /// height this view runs at; a change scheduled by `SetExitFee` shows as
+    /// `fee_next` taking effect at `activation_height`. Nothing pending:
+    /// `fee_next == fee_now` and `activation_height == 0`. `delay` is the
+    /// immutable `EXIT_FEE_DELAY` (1008 blocks). Views evaluate at the height
+    /// they are simulated at, so pass the current one.
+    fn view_exit_fee(&self) -> Result<CallResponse> {
+        let context = self.context()?;
+        let mut response = CallResponse::forward(&context.incoming_alkanes);
+        let h = self.height() as u128;
+        let now = exit_bps_at(h);
+        let at = read_u128(ptr("/exit_bps_at"));
+        let (next, at) = if at != 0 && h < at {
+            (read_u128(ptr("/exit_bps_next")).min(EXIT_BPS_MAX), at)
+        } else {
+            (now, 0)
+        };
+        let mut out = Vec::with_capacity(64);
+        out.extend_from_slice(&now.to_le_bytes());
+        out.extend_from_slice(&next.to_le_bytes());
+        out.extend_from_slice(&at.to_le_bytes());
+        out.extend_from_slice(&EXIT_FEE_DELAY.to_le_bytes());
         response.data = out;
         Ok(response)
     }

@@ -16,8 +16,8 @@ PROJECT_DIR="$SCRIPT_DIR/.."
 WASM_DIR="$PROJECT_DIR/target/wasm32-unknown-unknown/release"
 source "$SCRIPT_DIR/_env.sh"
 
-# Bet/bank token comes from _env.sh (regtest default: DIESEL 2:0; mainnet: 2:490
-# via BET_TOKEN_BLOCK=2 BET_TOKEN_TX=490). min_bet is a compile-time 1000.
+# Bet/bank token comes from _env.sh (regtest default: DIESEL 2:0; mainnet: 2:69
+# via BET_TOKEN_BLOCK=2 BET_TOKEN_TX=69). min_bet is a compile-time 1000.
 
 if [ "${1:-}" = "--build" ]; then
     bash "$SCRIPT_DIR/build-wasms.sh"
@@ -102,7 +102,7 @@ echo "    EDGE:   1% — fixed forever, ALL of it to LPs (players pay no house r
 echo "    KELLY:  1% of bank max net win per bet (full Kelly, growth-optimal)"
 echo "    BLOCK:  20% of bank max net payouts per block (miner defense)"
 echo "    TARGET: 1..64238  (0.0015%..98% win chance; max multiplier ~x64880)"
-echo "    EXIT:   2% LP-exit fee, operator-adjustable [0..2%] via SetExitFee"
+echo "    EXIT:   2% LP-exit fee, operator-adjustable [0..2%] via SetExitFee (applies 1008 blocks later)"
 echo ""
 echo "  operator auth keys (fee withdrawal):    3 × 4:$OPERATOR_TX (minted to you)"
 echo "    LP exit fee: 2% of each withdrawal → the table's fee_accum,"
@@ -113,5 +113,5 @@ echo "    ./scripts/deposit.sh 100000000        # seed the bank (mint DICE share
 echo "    ./scripts/roll.sh 32768 1000000       # bet 0.01 DIESEL on a coin flip"
 echo "    ./scripts/view.sh bank                # bank / shares / fee_accum / exit_bps"
 echo "    ./scripts/withdraw-fees.sh            # operator collects the exit fees"
-echo "    ./scripts/set-exit-fee.sh 100         # operator lowers the fee to 1% (max 2%)"
+echo "    ./scripts/set-exit-fee.sh 100         # operator schedules 1% (max 2%), live 1008 blocks later"
 echo "═══════════════════════════════════════"

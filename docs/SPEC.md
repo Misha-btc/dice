@@ -3,8 +3,8 @@
 Status: **implemented** (contract + math + integration tests; regtest e2e
 pending). Name: **Dice** — renamed from "Cheeky Bricky" on 2026-10-01 (the
 crates, the wasm and the on-chain names: shares show as "Dice"/"DICE", the
-operator key as "Dice Operator"/"DOP"). The mainnet bet token 2:490 keeps its
-own name, "CheekyB".
+operator key as "Dice Operator"/"DOP"). The mainnet main table (the template
+itself) is in FARTANE, 2:69, symbol H2S.
 
 Code map: `crates/dice-math` (pure math + the Kelly/no-ruin proofs),
 `alkanes/dice-game-runtime` (all logic, trait `DiceBase`),
@@ -16,7 +16,7 @@ Sister project of [arbuzino/Fireball](../../arbuzino) — same stack (ALKANES me
 immutable contracts, metashrew regtest), opposite temporal design: Fireball is a
 multi-block pari-mutuel draw; this is a **single-transaction instant game**.
 The bet/bank currency is a single alkane fixed at init and immutable after:
-**mainnet 2:490**; regtest/tests use DIESEL 2:0 (the only harness-mintable token).
+**mainnet 2:69** (FARTANE / H2S); regtest/tests use DIESEL 2:0 (the only harness-mintable token).
 
 **Chosen mechanic (2026-08-25): dice vs an LP-owned bankroll.** The design goal,
 in the owner's words: minimal-but-nonzero house take, and mechanics that
@@ -205,7 +205,9 @@ The fee is **adjustable by the operator** (`SetExitFee`, opcode 7) but **bounded
 by the immutable `EXIT_BPS_MAX = 200` (2%)** — a compile-time ceiling that no
 operator action can exceed, so LPs have a permanent guarantee that exiting will
 never cost more than 2%. The minimum is 0 (free exits). The live value lives in
-`/exit_bps` and defaults to the 2% max at init.
+`/exit_bps` and defaults to the 2% max at init. **Every change waits
+`EXIT_FEE_DELAY = 1008` blocks (~a week)** before it applies — up or down — so an
+LP always sees a new fee a week ahead and can leave at the old one first.
 
 Flow (all in the bet token):
 1. `Withdraw` retains the current fee (`/exit_bps`, 0..200 bps) of the gross
@@ -216,8 +218,14 @@ Flow (all in the bet token):
    (`OPERATOR_AUTH_ID = 4:0xDEAD`, any one of its three units). The key is
    spent-and-returned (never consumed), so one key drains every table the
    operator runs. Reverts on a missing key or a zero balance.
-3. `SetExitFee { bps }` (opcode 7, same auth key) sets `/exit_bps` for that table;
-   reverts if `bps > EXIT_BPS_MAX`. One key adjusts every table.
+3. `SetExitFee { bps }` (opcode 7, same auth key) SCHEDULES that table's fee:
+   `/exit_bps_next = bps`, `/exit_bps_at = height + 1008`. `Withdraw` uses the fee
+   in force at its own height (`exit_bps_at(h)`: the scheduled one from its
+   activation height on). A newer call replaces a still-pending change and
+   restarts the countdown — scheduling the current fee is how one is cancelled; a
+   change that already matured is first folded into `/exit_bps`. Reverts if
+   `bps > EXIT_BPS_MAX`. One key adjusts every table. `ViewExitFee` (opcode 106)
+   shows `(fee_now, fee_next, activation_height, delay)`.
 
 **Why per-table, not a shared treasury.** Each table has exactly one bet token, so
 its fee is single-token and stays put until collected — no sink contract holding
@@ -282,7 +290,7 @@ entire game, forever.
 
 ```
 /initialized          u8
-/bet_token            AlkaneId (immutable, init param — mainnet 2:490)
+/bet_token            AlkaneId (immutable, init param — mainnet 2:69)
 /name, /symbol        bytes  (immutable, init params — per-instance wallet identity)
 /table/{token_id}     AlkaneId (registry, template only; CreateTable is the sole writer)
 /bank                 u128   (LP bankroll; deposits + losses + donations − wins − withdrawals)
@@ -290,7 +298,9 @@ entire game, forever.
 (min_bet is a compile-time constant 1000, not stored)
 /last_win_height      u128   (per-block budget bookkeeping)
 /paid_this_block      u128   (Σ realized net payouts at last_win_height)
-/exit_bps             u128   (live LP-exit fee 0..200; operator-set via SetExitFee, init=200)
+/exit_bps             u128   (LP-exit fee in force 0..200, init=200)
+/exit_bps_next        u128   (fee scheduled by SetExitFee)
+/exit_bps_at          u128   (its activation height, schedule height + 1008; 0 = none)
 /fee_accum            u128   (accrued LP-exit fees, bet-token; paid out by WithdrawFees)
 /total_bets           u128   (stats)
 /total_wagered        u128   (stats: Σ effective bets)
@@ -312,13 +322,14 @@ operator auth (separate contract, 4:0xDEAD):
 | 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token minus the current exit fee (0..2%, fee → `/fee_accum`); slippage floor on the net |
 | 5 | `Donate` | `amount` | grow the bank, no shares |
 | 6 | `WithdrawFees` | — | operator-only (attach `OPERATOR_AUTH_ID` key, returned); pays this table's `/fee_accum` to the caller, zeroes it; reverts on a missing key or zero balance |
-| 7 | `SetExitFee` | `bps` | operator-only (auth key, returned); set `/exit_bps = bps`; reverts if `bps > 200` (2% ceiling immutable); `0` = free exits |
+| 7 | `SetExitFee` | `bps` | operator-only (auth key, returned); schedules the fee to become `bps` 1008 blocks later (any change; a newer call replaces a pending one); reverts if `bps > 200` (2% ceiling immutable); `0` = free exits |
 | 99/100 | `GetName`/`GetSymbol` | — | **convention** (share units live in wallets!) — "Dice" / "DICE" |
-| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 3 = accrued fee, field 4 = live fee bps |
+| 101 | `ViewBank` | — | `(bank, total_shares, fee_accum, exit_bps)` — field 3 = accrued fee, field 4 = fee in force (bps) at the view's height |
 | 102 | `ViewStats` | — | `(total_bets, total_wagered, total_won)` |
 | 103 | `ViewConfig` | — | `(min_bet, edge_bps, t_min, t_max, token_block, token_tx, exit_bps_max)` — field 7 = 2% ceiling |
 | 104 | `ViewMaxBet` | `target` | `(max_bet, max_net_profit)` at current bank+edge |
 | 105 | `ViewTableOf` | `token_block, token_tx` | registry lookup → table `(block, tx)`, zeros if none |
+| 106 | `ViewExitFee` | — | `(fee_now, fee_next, activation_height, delay)`; nothing pending = `fee_next == fee_now`, height 0 |
 
 ### operator auth key (4:0xDEAD = 57005)
 
@@ -406,7 +417,7 @@ refunded).
    (`VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1`) + revert on zero-share
    deposits. Attack is a guaranteed ~50% loss for the attacker (tested).
 3. **Share token branding**: `GetName` = "Dice", `GetSymbol` = "DICE".
-4. **Init params** (immutable): the bet/bank token id — **mainnet 2:490** (a
+4. **Init params** (immutable): the bet/bank token id — **mainnet 2:69** (a
    parameter, not a hardcode, so the harness can run on mintable DIESEL) plus
    the share name/symbol. `min_bet` is a compile-time constant **1000**
    (2026-08-27, owner's call — dropped as an init arg: 1000 is a safe rounding
@@ -477,7 +488,7 @@ refunded).
 2026-10-01 (pre-mainnet):
 14. **Renamed to Dice** (owner's call): crates, wasm and scripts
     `cheeky-bricky-*` → `dice-*`; on-chain names "Dice"/"DICE" (shares) and
-    "Dice Operator"/"DOP" (key). The mainnet bet token 2:490 keeps its own name.
+    "Dice Operator"/"DOP" (key).
 15. **Ids fixed** (owner's call): the operator key moves to
     `OPERATOR_AUTH_ID = 4:0xDEAD` (57005, was 0x7EA5) and the game deploys at
     4:0xFACE (64206). Both slots were free on mainnet when chosen;
@@ -487,6 +498,18 @@ refunded).
     strands the fees. Accepted trade-off: any single unit is full operator power
     (WithdrawFees, SetExitFee within 0..2%); LP and player funds stay out of reach
     either way.
+17. **Main table in FARTANE, 2:69 (symbol H2S)** instead of 2:490 (owner's call):
+    the template is initialized with 2:69, so it is the canonical H2S table; its
+    shares keep the default "Dice"/"DICE" (an explicit name would have to be an
+    init arg — owner preferred the default). Tables for any other token still
+    come from `CreateTable`, named "<token> House" / "h<SYMBOL>" automatically.
+18. **Exit-fee changes are timelocked** (owner's call): `SetExitFee` no longer
+    applies at once — every change, up or down, takes effect
+    `EXIT_FEE_DELAY = 1008` blocks (~a week) later (`/exit_bps_next`,
+    `/exit_bps_at`; `Withdraw` uses the fee in force at its height). LPs always
+    get a week's notice and can exit at the old fee before an increase. A newer
+    call replaces a pending one; the 2% ceiling is unchanged. New view
+    `ViewExitFee` (opcode 106) shows the countdown.
 
 `CreateTable` is permissionless and one-per-token-forever, so a few economic
 sharp edges are worth accepting on record BEFORE deploy (none are protocol
