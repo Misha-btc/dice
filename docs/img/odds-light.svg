@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-label="Payout multiplier vs win chance: x1.01 at 98% up to x64,880 at 0.0015%">
+<title>Payout multiplier vs win chance: x1.01 at 98% up to x64,880 at 0.0015%</title>
+<rect x="1" y="1" width="1198" height="618" rx="22" fill="#fcfbf8" stroke="#ebe6dd" stroke-width="2"/>
+<text x="80" y="66" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="700" fill="#343433" text-anchor="start" >Any odds, the same 1% edge</text>
+<text x="80" y="96" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="400" fill="#6b6a68" text-anchor="start" >Payout multiplier (log scale) for every win chance: multiplier = 0.99 ÷ chance, so on average every bet returns 99% of its stake.</text>
+<line x1="120.0" y1="150" x2="120.0" y2="500" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="367.5" y1="150" x2="367.5" y2="500" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="615.0" y1="150" x2="615.0" y2="500" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="862.5" y1="150" x2="862.5" y2="500" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="1110.0" y1="150" x2="1110.0" y2="500" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="120" y1="500.0" x2="1110" y2="500.0" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="120" y1="430.0" x2="1110" y2="430.0" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="120" y1="360.0" x2="1110" y2="360.0" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="120" y1="290.0" x2="1110" y2="290.0" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="120" y1="220.0" x2="1110" y2="220.0" stroke="#ebe6dd" stroke-width="1"/>
+<line x1="120" y1="150.0" x2="1110" y2="150.0" stroke="#ebe6dd" stroke-width="1"/>
+<polygon points="120.0,500 120.0,163.2 120.0,168.6 120.0,174.1 120.0,179.5 120.0,185.0 120.0,190.4 120.0,195.9 120.1,201.3 120.1,206.8 120.1,212.3 120.1,217.7 120.1,223.2 120.1,228.6 120.2,234.1 120.2,239.5 120.2,245.0 120.3,250.4 120.3,255.9 120.4,261.4 120.5,266.8 120.5,272.3 120.7,277.7 120.8,283.2 120.9,288.6 121.1,294.1 121.3,299.5 121.6,305.0 121.9,310.5 122.3,315.9 122.8,321.4 123.3,326.8 123.9,332.3 124.7,337.7 125.6,343.2 126.7,348.6 128.1,354.1 129.7,359.6 131.6,365.0 133.8,370.5 136.5,375.9 139.8,381.4 155.6,399.2 171.5,410.4 187.3,418.6 203.2,425.0 219.0,430.3 234.9,434.8 250.7,438.8 266.5,442.2 282.4,445.4 298.2,448.2 314.1,450.8 329.9,453.2 345.8,455.4 361.6,457.4 377.4,459.4 393.3,461.2 409.1,462.9 425.0,464.5 440.8,466.0 456.7,467.5 472.5,468.9 488.4,470.2 504.2,471.5 520.0,472.8 535.9,473.9 551.7,475.1 567.6,476.2 583.4,477.2 599.3,478.3 615.1,479.2 630.9,480.2 646.8,481.1 662.6,482.0 678.5,482.9 694.3,483.8 710.2,484.6 726.0,485.4 741.8,486.2 757.7,486.9 773.5,487.7 789.4,488.4 805.2,489.1 821.1,489.8 836.9,490.5 852.7,491.2 868.6,491.8 884.4,492.4 900.3,493.1 916.1,493.7 932.0,494.3 947.8,494.9 963.6,495.4 979.5,496.0 995.3,496.6 1011.2,497.1 1027.0,497.6 1042.9,498.2 1058.7,498.7 1074.5,499.2 1090.4,499.7 1090.4,500" fill="#e63800" fill-opacity="0.10"/>
+<polyline points="120.0,163.2 120.0,168.6 120.0,174.1 120.0,179.5 120.0,185.0 120.0,190.4 120.0,195.9 120.1,201.3 120.1,206.8 120.1,212.3 120.1,217.7 120.1,223.2 120.1,228.6 120.2,234.1 120.2,239.5 120.2,245.0 120.3,250.4 120.3,255.9 120.4,261.4 120.5,266.8 120.5,272.3 120.7,277.7 120.8,283.2 120.9,288.6 121.1,294.1 121.3,299.5 121.6,305.0 121.9,310.5 122.3,315.9 122.8,321.4 123.3,326.8 123.9,332.3 124.7,337.7 125.6,343.2 126.7,348.6 128.1,354.1 129.7,359.6 131.6,365.0 133.8,370.5 136.5,375.9 139.8,381.4 155.6,399.2 171.5,410.4 187.3,418.6 203.2,425.0 219.0,430.3 234.9,434.8 250.7,438.8 266.5,442.2 282.4,445.4 298.2,448.2 314.1,450.8 329.9,453.2 345.8,455.4 361.6,457.4 377.4,459.4 393.3,461.2 409.1,462.9 425.0,464.5 440.8,466.0 456.7,467.5 472.5,468.9 488.4,470.2 504.2,471.5 520.0,472.8 535.9,473.9 551.7,475.1 567.6,476.2 583.4,477.2 599.3,478.3 615.1,479.2 630.9,480.2 646.8,481.1 662.6,482.0 678.5,482.9 694.3,483.8 710.2,484.6 726.0,485.4 741.8,486.2 757.7,486.9 773.5,487.7 789.4,488.4 805.2,489.1 821.1,489.8 836.9,490.5 852.7,491.2 868.6,491.8 884.4,492.4 900.3,493.1 916.1,493.7 932.0,494.3 947.8,494.9 963.6,495.4 979.5,496.0 995.3,496.6 1011.2,497.1 1027.0,497.6 1042.9,498.2 1058.7,498.7 1074.5,499.2 1090.4,499.7" fill="none" stroke="#e63800" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="120.0" cy="163.2" r="6" fill="#e63800" stroke="#fcfbf8" stroke-width="2.5"/>
+<text x="134.01510620117188" y="168.15194123451255" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#343433" text-anchor="start" >0.0015% → ×64,880</text>
+<text x="134.01510620117188" y="188.15194123451255" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#6b6a68" text-anchor="start" >target 1, the jackpot</text>
+<circle cx="129.9" cy="360.3" r="6" fill="#e63800" stroke="#fcfbf8" stroke-width="2.5"/>
+<text x="143.9" y="365.3055363781715" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#343433" text-anchor="start" >1% → ×99</text>
+<circle cx="219.0" cy="430.3" r="6" fill="#e63800" stroke="#fcfbf8" stroke-width="2.5"/>
+<circle cx="367.5" cy="458.2" r="6" fill="#e63800" stroke="#fcfbf8" stroke-width="2.5"/>
+<circle cx="615.0" cy="479.2" r="6" fill="#e63800" stroke="#fcfbf8" stroke-width="2.5"/>
+<text x="615.0" y="439.2334366816928" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#343433" text-anchor="middle" >50% → ×1.98</text>
+<text x="615.0" y="459.2334366816928" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#6b6a68" text-anchor="middle" >a coin flip</text>
+<circle cx="1090.4" cy="499.7" r="6" fill="#e63800" stroke="#fcfbf8" stroke-width="2.5"/>
+<text x="1096.3921508789062" y="459.6973820088057" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#343433" text-anchor="end" >98% → ×1.01</text>
+<text x="1096.3921508789062" y="479.6973820088057" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#6b6a68" text-anchor="end" >the safest bet</text>
+<text x="120.0" y="526" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >0%</text>
+<text x="367.5" y="526" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >25%</text>
+<text x="615.0" y="526" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >50%</text>
+<text x="862.5" y="526" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >75%</text>
+<text x="1110.0" y="526" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >100%</text>
+<text x="106" y="505.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="end" >×1</text>
+<text x="106" y="435.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="end" >×10</text>
+<text x="106" y="365.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="end" >×100</text>
+<text x="106" y="295.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="end" >×1,000</text>
+<text x="106" y="225.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="end" >×10,000</text>
+<text x="106" y="155.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="end" >×100,000</text>
+<text x="615.0" y="558" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#6b6a68" text-anchor="middle" >win chance</text>
+<text x="40" y="325.0" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#6b6a68" text-anchor="middle" transform="rotate(-90 40 325.0)">payout multiplier</text>
+</svg>

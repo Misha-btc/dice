@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Dice — instant roll-under dice on Bitcoin">
+<title>Dice — instant roll-under dice on Bitcoin</title>
+<rect x="1" y="1" width="1278" height="318" rx="22" fill="#fcfbf8" stroke="#ebe6dd" stroke-width="2"/>
+<g transform="rotate(-14 176 150)"><rect x="101.0" y="75.0" width="150" height="150" rx="30.0" fill="#343433"/><circle cx="135.5" cy="109.5" r="11.2" fill="#fcfbf8"/><circle cx="176.0" cy="150.0" r="11.2" fill="#fcfbf8"/><circle cx="216.5" cy="190.5" r="11.2" fill="#fcfbf8"/></g>
+<g transform="rotate(9 236 186)"><rect x="161.0" y="111.0" width="150" height="150" rx="30.0" fill="#e63800"/><circle cx="195.5" cy="145.5" r="11.2" fill="#fcfbf8"/><circle cx="276.5" cy="145.5" r="11.2" fill="#fcfbf8"/><circle cx="236.0" cy="186.0" r="11.2" fill="#fcfbf8"/><circle cx="195.5" cy="226.5" r="11.2" fill="#fcfbf8"/><circle cx="276.5" cy="226.5" r="11.2" fill="#fcfbf8"/></g>
+<text x="384" y="128" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="92" font-weight="800" fill="#343433" text-anchor="start" >Dice</text>
+<text x="386" y="170" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="26" font-weight="400" fill="#6b6a68" text-anchor="start" >Instant roll-under dice on Bitcoin · ALKANES metaprotocol</text>
+<rect x="384" y="196" width="257" height="38" rx="19" fill="#ffffff" stroke="#ebe6dd" stroke-width="1.5"/>
+<text x="512.4" y="221" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="500" fill="#343433" text-anchor="middle" >1 tx = 1 bet = 1 result</text>
+<rect x="652.8" y="196" width="199" height="38" rx="19" fill="#ffffff" stroke="#ebe6dd" stroke-width="1.5"/>
+<text x="752.4" y="221" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="500" fill="#343433" text-anchor="middle" >LP-owned bankroll</text>
+<rect x="864.0" y="196" width="218" height="38" rx="19" fill="#ffffff" stroke="#ebe6dd" stroke-width="1.5"/>
+<text x="973.2" y="221" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="500" fill="#343433" text-anchor="middle" >immutable contracts</text>
+<text x="1236" y="286" font-family="'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace" font-size="16" font-weight="400" fill="#9a9791" text-anchor="end" >roll = sha256(blockhash ‖ txid) mod 65,536</text>
+</svg>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-label="Roll under your target: win if the block's roll is below T">
+<title>Roll under your target: win if the block's roll is below T</title>
+<rect x="1" y="1" width="1198" height="438" rx="22" fill="#fcfbf8" stroke="#ebe6dd" stroke-width="2"/>
+<text x="80" y="70" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="700" fill="#343433" text-anchor="start" >Roll under your target</text>
+<text x="80" y="100" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="400" fill="#6b6a68" text-anchor="start" >The block that mines your bet decides the roll — nobody can know it in advance.</text>
+<rect x="80" y="176" width="519.0" height="46" rx="10" fill="#00a565"/>
+<rect x="601.0" y="176" width="519.0" height="46" rx="10" fill="#ece7de"/>
+<text x="340.0" y="205" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">WIN · roll &lt; T</text>
+<text x="860.0" y="205" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#6b6a68" text-anchor="middle" >LOSE · roll ≥ T</text>
+<line x1="600.0" y1="136" x2="600.0" y2="230" stroke="#343433" stroke-width="2"/>
+<text x="610.0" y="150" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#343433" text-anchor="start" >your target T = 32,768: 50% chance, pays ×1.98</text>
+<path d="M411.6,160 L427.6,160 L419.6,172 Z" fill="#343433"/>
+<text x="423.647216796875" y="150" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500" fill="#6b6a68" text-anchor="end" >this block's roll: 21,403 → win</text>
+<text x="80.0" y="252" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >0</text><text x="340.0" y="252" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >16,384</text><text x="600.0" y="252" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >32,768</text><text x="860.0" y="252" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >49,152</text><text x="1120.0" y="252" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9a9791" text-anchor="middle" >65,536</text>
+<line x1="80" y1="300" x2="1120" y2="300" stroke="#ebe6dd" stroke-width="1"/>
+<text x="80" y="336" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#6b6a68" text-anchor="start" >Win chance</text>
+<text x="80" y="366" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="600" fill="#343433" text-anchor="start" >T ÷ 65,536</text>
+<text x="420" y="336" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#6b6a68" text-anchor="start" >Payout, stake included</text>
+<text x="420" y="366" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="600" fill="#343433" text-anchor="start" >stake × 0.99 × 65,536 ÷ T</text>
+<text x="790" y="336" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#6b6a68" text-anchor="start" >The roll</text>
+<text x="790" y="366" font-family="'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace" font-size="17" font-weight="600" fill="#343433" text-anchor="start" >sha256(blockhash ‖ txid) mod 65,536</text>
+</svg>

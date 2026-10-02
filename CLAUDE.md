@@ -50,6 +50,18 @@ touch them.
 Read `docs/SPEC.md` for the full design (including the Kelly derivation and the
 miner-withholding analysis).
 
+## Mainnet deployment (live since 2026-10-02)
+
+| Contract | Alkane | Block · reveal tx |
+|---|---|---|
+| Dice (template + registry + the 2:69 H2S table, shares "Dice"/"DICE") | `4:64206` | 969539 · `8b30ecac…be79` |
+| Dice Operator (3 key units, on the fire mainnet wallet) | `4:57005` | 969541 · `319e4471…61ea` |
+
+Built from `452d0a1` — game wasm `5475f1f1…8b60`, operator `92a4ef9c…def0`; the full
+record (txids, toolchain, Cargo.lock hash) is `deployments/mainnet.env`. Read it live
+with `RPC_URL=https://mainnet.subfrost.io/v4/subfrost ./scripts/view.sh bank`.
+README figures: `python3 docs/img/make_figures.py` regenerates `docs/img/*.svg`.
+
 ## Build Commands
 
 ```bash

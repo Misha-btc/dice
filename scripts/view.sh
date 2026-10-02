@@ -67,7 +67,7 @@ def rpc(method, params):
     req = urllib.request.Request(
         "$RPC_URL",
         data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "User-Agent": "dice-view"},  # bare urllib UA gets a 403 from public RPCs
     )
     return json.loads(urllib.request.urlopen(req).read())
 
