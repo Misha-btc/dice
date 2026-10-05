@@ -24,8 +24,9 @@ export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap
 
 # secp256k1-sys compiles C code with $CC, and the output bytes depend on the
 # clang version: the deployed contracts were built with Homebrew LLVM clang
-# 20.1.4 (deployments/mainnet.env). Override with CC=/path/to/clang; any other
-# clang builds working contracts, but not byte-identical to the deployed ones.
+# 20.1.4 (deployments/mainnet.env). Override with CC=/path/to/clang (or
+# CC_wasm32_unknown_unknown, which cc-rs reads first); any other clang builds
+# working contracts, but not byte-identical to the deployed ones.
 if [ -z "${CC:-}" ]; then
     if [ -x /opt/homebrew/opt/llvm/bin/clang ]; then
         CC=/opt/homebrew/opt/llvm/bin/clang
@@ -34,7 +35,7 @@ if [ -z "${CC:-}" ]; then
     fi
 fi
 export CC
-echo "C compiler: $("$CC" --version | head -1)"
+echo "C compiler: $("${CC_wasm32_unknown_unknown:-$CC}" --version | head -1)"
 
 # dice-game is the product; dice-attacker is a TEST-ONLY fixture used by
 # flash_attack_test (never deployed).

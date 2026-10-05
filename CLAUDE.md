@@ -8,9 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The bet/bank currency is a single alkane fixed at init and immutable after —
 **mainnet: 2:69** (FARTANE, symbol H2S — the template's own table, shares "Dice"/"DICE");
 regtest/tests: DIESEL 2:0 (the only harness-mintable token).
-Everything is immutable — the 1% edge is a compile-time constant, there is no
-privileged capability of any kind (an auth-token edge-lowering knob existed
-2026-08-26 → removed 2026-08-27).
+Everything but the LP-exit fee is immutable — the 1% edge is a compile-time
+constant (an auth-token edge-lowering knob existed 2026-08-26 → removed
+2026-08-27), and the only privileged capabilities are two operator ops gated by
+the auth key `4:0xDEAD`: `WithdrawFees` (opcode 6) and `SetExitFee` (opcode 7,
+schedules the LP-exit fee within 0..200 bps, effective 1008 blocks later). They
+touch only fee revenue and the exit fee — never the bank, shares, edge, caps or
+player flows.
 One transaction = one bet = one resolution:
 the roll comes from `sha256(blockhash ‖ txid)` of the block that mines the bet
 (the algorithm runes canonized in ordinals/ord#4541), and the payout lands on the
@@ -20,8 +24,10 @@ liabilities — ever.
 The bankroll is **LP-owned**: deposits mint fungible DICE shares (units of the game
 alkane itself) at the current `bank/total_shares` price; withdrawals burn them
 pro-rata, anytime. The **full-Kelly cap** (max player net profit = 1% of bank per
-bet — the growth-optimal fraction, independent of chosen odds — plus ≤20% of bank
-in realized net wins per block) makes the bank mathematically unruinable and gives
+bet — the growth-optimal fraction, independent of chosen odds — plus a per-block
+budget of realized net wins ≤ 20% of the *current* bank, so same-block losses can
+fund extra wins but Rolls never take the bank below 80% of its start-of-block
+value) makes the bank mathematically unruinable and gives
 LPs a positive long-run log-drift — the "LPs win in the long run" guarantee is the
 core design goal.
 
@@ -40,12 +46,12 @@ via `WithdrawFees` (opcode 6). Both ops are gated by a **hardcoded auth key**
 interchangeable units minted to the deployer, any ONE authorizes); one key
 controls every table. No external call on the path, so nothing can strand the fee.
 
-**Immutable by design** (same philosophy as sister project
-[arbuzino/Fireball](../arbuzino)): no proxy, no upgrade path, no admin *on the
-game*. Every constant is compiled in. The only privileged action is the operator
-collecting fees they already earned, gated by possession of an auth key — losing
-all three keys means losing fee access (immutable), but LP and player flows never
-touch them.
+**Immutable by design** (same philosophy as the sister project arbuzino/Fireball):
+no proxy, no upgrade path, no admin *on the game*. Every constant is compiled in.
+The only privileged actions are the operator's two auth-key ops — collecting fees
+they already earned (`WithdrawFees`) and scheduling the exit fee within 0..2%
+(`SetExitFee`, 1008-block delay) — losing all three keys means losing fee access
+and fee control (immutable), but LP and player flows never touch them.
 
 Read `docs/SPEC.md` for the full design (including the Kelly derivation and the
 miner-withholding analysis).
@@ -55,7 +61,7 @@ miner-withholding analysis).
 | Contract | Alkane | Block · reveal tx |
 |---|---|---|
 | Dice (template + registry + the 2:69 H2S table, shares "Dice"/"DICE") | `4:64206` | 969539 · `8b30ecac…be79` |
-| Dice Operator (3 key units, on the fire mainnet wallet) | `4:57005` | 969541 · `319e4471…61ea` |
+| Dice Operator (3 key units, held by the operator) | `4:57005` | 969541 · `319e4471…61ea` |
 
 Built from `452d0a1` — game wasm `5475f1f1…8b60`, operator `92a4ef9c…def0`; the full
 record (txids, toolchain, Cargo.lock hash) is `deployments/mainnet.env`. Read it live
@@ -67,13 +73,13 @@ README figures: `python3 docs/img/make_figures.py` regenerates `docs/img/*.svg`.
 ```bash
 cargo build                                  # native build (IDE/check)
 cargo test -p dice-math                   # 28 unit tests (pure math, fast)
-./scripts/build-wasms.sh                     # wasm32 build + vendor into src/tests/wasm/
+./scripts/build-wasms.sh                     # wasm32 build + copy into src/tests/wasm/ (gitignored)
 cargo test --lib -- --test-threads=1         # integration tests (alkanes harness)
 # --test-threads=1 because tests share global metashrew state
 
-# Regtest cycle (requires docker compose + alkanes-cli, see arbuzino memory):
-ALKANES_RS=~/subfrost/alkanes-rs ./scripts/reset-regtest.sh
-ALKANES_RS=~/subfrost/alkanes-rs ./scripts/deploy-regtest.sh --build
+# Regtest cycle (requires docker compose + alkanes-cli):
+ALKANES_RS=/path/to/alkanes-rs ./scripts/reset-regtest.sh
+ALKANES_RS=/path/to/alkanes-rs ./scripts/deploy-regtest.sh --build
 
 # Mainnet: the game, then the operator key (keys minted last) — preflight (no spend) first.
 # Rehearse with NETWORK=regtest; the record lands in deployments/mainnet.env.
@@ -92,6 +98,7 @@ is linked in, so a byte-exact rebuild also needs the same clang (Homebrew LLVM
 
 ```
 dice/
+├── README.md                        # public overview (figures from docs/img/)
 ├── Cargo.toml                       # workspace + test package (git deps float;
 │                                    #  Cargo.lock is seeded from arbuzino's so both
 │                                    #  projects build identical alkanes revisions —
@@ -109,13 +116,14 @@ dice/
 │   ├── roll_test.rs                 # the game, with DETERMINISTIC win/lose forcing
 │   ├── factory_test.rs              # per-token clones (PERMAFROST pattern)
 │   ├── flash_attack_test.rs         # Roll rejects contract callers (dice-attacker fixture)
-│   ├── fuel_audit_test.rs           # every opcode ≤ 3.5M fuel floor (CreateTable is the heavy one)
+│   ├── fuel_audit_test.rs           # 11 of 16 opcodes ≤ 3.5M fuel floor (not 0/3/99/100/106; CreateTable is the heavy one)
 │   ├── scenario_test.rs             # same-block budget, full withdraw + revive
-│   ├── exit_fee_test.rs             # 2% exit fee → auth-gated WithdrawFees by the operator
-│   └── wasm/                        # vendored dice_game.wasm (+ operator, attacker)
+│   ├── exit_fee_test.rs             # exit fee (0–2%, SetExitFee + 1008-block delay) → auth-gated WithdrawFees
+│   └── wasm/                        # dice_game.wasm (+ operator, attacker): generated by scripts/build-wasms.sh, gitignored (not in git)
 ├── rust-toolchain.toml              # pinned compiler (reproducible deployed wasm)
 ├── deployments/mainnet.env          # written by scripts/deploy-mainnet.sh: ids, txids, wasm sha256
 ├── docs/SPEC.md                     # the design document — read this first
+├── docs/img/                        # README figures (*.svg) + make_figures.py, their generator
 └── scripts/                         # regtest CLI helpers (source scripts/_env.sh)
 ```
 
@@ -125,7 +133,9 @@ dice/
 EDGE_BPS  = 100          // 1%, FIXED FOREVER — ALL of it accrues to LPs (no house
                          // rake on play; the ONLY operator cut is the exit fee below)
 // per-bet cap = edge · bank (full Kelly): 1% — growth-optimal, no-ruin; 1% is the max, not a knob
-BLOCK_BUDGET_BPS = 2000  // Σ realized net payouts per block ≤ 20% of bank (miner defense)
+BLOCK_BUDGET_BPS = 2000  // Σ realized net payouts per block ≤ 20% of the CURRENT bank (miner
+                         // defense) — same-block losses can fund extra wins, but Rolls never
+                         // take the bank below 80% of its start-of-block value (scenario_test)
 MIN_WIN_MULT_BPS = 10_100 // win must pay ≥ ×1.01 → t_max = 64_238 (≈98% chance,
                           // the classic dice-slider ceiling)
 T_MIN     = 1            // win chance 1/65536 ≈ 0.0015%; MAX multiplier ≈ ×64880
@@ -136,9 +146,10 @@ T_MIN     = 1            // win chance 1/65536 ≈ 0.0015%; MAX multiplier ≈ �
 VIRTUAL_SHARES = 1_000_000  // ERC-4626 inflation-attack defense (+ zero-share revert)
 ```
 
-Plus one constant in `dice-game-runtime` (not math):
+Plus, in `dice-game-runtime` (not math):
 
 ```rust
+MIN_BET = 1_000            // compile-time minimum bet (not an init arg, not stored)
 EXIT_BPS_MAX = 200         // 2% — IMMUTABLE ceiling on the LP-exit fee (hard LP guarantee)
 EXIT_FEE_DELAY = 1008      // blocks (~1 week) from SetExitFee to the new fee taking effect — any change
 /exit_bps (storage)        // fee in force 0..200 (init 200); a scheduled change lives in /exit_bps_next|_at
@@ -159,7 +170,7 @@ enforced in `Roll`, proven in `dice-math` tests incl. a 200k-bet no-ruin sim).
 | 0 | `InitDice` | `token_block, token_tx, name, symbol` | one-time; name/symbol u128-packed LE (0 = "Dice"/"DICE"); min_bet is a compile-time 1000 (not an arg); direct deploy `[3,TX,0,…]` or **factory clone `[6,TEMPLATE_TX,0,…]`**; bet token ≠ self |
 | 1 | `Roll` | `target, amount, min_amount` | the game; bet token in; CLAMPED not reverted; **`amount = 0` bets everything sent** — the primary mint-and-roll flow (`[mint] → [Roll(target,0)]`, mint size unknowable at compose time); response data `(roll, win, payout, effective_amount)` 4×u128 LE |
 | 2 | `Deposit` | `amount` | bet token → mint DICE shares at current price; zero-share deposits revert |
-| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; **2% exit fee retained in /fee_accum, LP gets 98%**; slippage floor applies to the NET (0=off) |
+| 3 | `Withdraw` | `shares, min_payout` | burn shares → pro-rata bet token; **the exit fee in force (0–2%, operator-set via `SetExitFee`, currently 2%) is retained in /fee_accum, the LP gets the rest**; slippage floor applies to the NET (0=off) |
 | 4 | `CreateTable` | `token_block, token_tx` | permissionless registry front door, NOT payable/seeded (table born empty, dormant until a deposit); identity read from the token's own 99/100 ("Brick"→"Brick House"/"hBRICK"); ONE canonical table per token forever (template-only; raw [6,TX] clones possible but unregistered = invisible to frontends); returns the new table id |
 | 5 | `Donate` | `amount` | grow bank, mint nothing (gift to LPs) |
 | 6 | `WithdrawFees` | — | **operator-only** (attach the `OPERATOR_AUTH_ID` key, spent-and-returned); pays this table's whole `/fee_accum` (bet token) to the caller and zeroes it. Reverts on a missing key or zero balance. No external call |
@@ -191,8 +202,7 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
 /bet_token         AlkaneId (immutable init param — mainnet 2:69)
 /name, /symbol     bytes (immutable init params — per-instance wallet identity)
 (min_bet: compile-time const 1000, not stored)
-/table/{token_id}  AlkaneId (canonical-table registry; template-only, CreateTable-only writer)
-/min_bet           u128  (immutable init param)
+/table/{token_id}  AlkaneId (canonical-table registry; template-only; written by CreateTable and by the template's own init — self-registration)
 /bank              u128  (LP bankroll: deposits + donations + losses − wins − withdrawals)
 /total_shares      u128  (DICE supply)
 /last_win_height   u128  (per-block budget bookkeeping)
@@ -207,9 +217,12 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
 
 ## Critical Gotchas
 
-1. **All of arbuzino's gotchas apply** (this repo copies its harness): the 99/100
-   wallet convention, deploy auto-runs opcode 0, `--inputs "block:tx:amount"`,
-   varint decoding in view.sh, `protorunesbyaddress` regtest flakiness.
+1. **Harness and CLI conventions** (the test harness is copied from arbuzino):
+   opcodes 99/100 must return UTF-8 name/symbol (the wallet convention); a deploy
+   auto-runs opcode 0; alkanes-cli attaches alkanes as `--inputs "block:tx:amount"`;
+   view.sh must parse protobuf varint lengths (single-byte reads corrupt responses
+   ≥ 128 bytes); `protorunesbyaddress` is flaky on regtest (view.sh queries
+   `metashrew_view` directly).
 2. **Do not pin `rev=` on the git deps.** alkanes-rs internally depends on
    metashrew by floating git ref; a rev pin here creates a SECOND copy of
    `metashrew_support` in the graph and trait-mismatch compile errors. Revisions
@@ -230,13 +243,17 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
    make the bank's log-drift negative). The table stores `/last_roll_txid` and a
    second Roll from the same tx reverts (full refund). Separate txs in the same
    block are unaffected; mint-and-roll is one Roll, so it is unaffected too.
-6. **A win can revert on the per-block cap** if earlier wins in the same block
-   drained it: the bet refunds in full and can be re-sent next block. This is the
-   miner-stuffing defense working as intended, not a bug.
+6. **A Roll can revert on the per-block cap — before rolling, never because it
+   won.** The caps apply BEFORE the roll: the stake is clamped so its net win fits
+   min(Kelly cap, what is left of this block's 20% budget), and only then rolled.
+   If earlier wins in the same block drained the budget so far that the clamped
+   stake falls below `MIN_BET` (1000) or the caller's `min_amount`, the Roll
+   reverts — independent of the outcome — with a full refund, and can be re-sent
+   next block. This is the miner-stuffing defense working as intended, not a bug.
 7. **mint_diesel in tests aliases its outpoint** (null-input tx → same txid every
    call): mint at most once per test.
 8. **Regtest on fresh alkanes-rs develop** (rehearsed 2026-10-01: origin/develop
-   46584fda in a clean worktree, `ALKANES_RS=~/subfrost/alkanes-rs-upstream`).
+   46584fda in a clean worktree, `ALKANES_RS=/path/to/alkanes-rs`).
    Its alkanes-jsonrpc caps `generatetoaddress` at 1 block per call, so bulk
    mining goes straight to bitcoind (`--bitcoin-rpc-url`, `BITCOIN_RPC_URL` in
    `_env.sh`). Its alkanes-cli appends a DIESEL-mint protostone `[2,0,77]` to every
@@ -293,7 +310,7 @@ the game's `WithdrawFees`/`SetExitFee` require any one of them. Implements the
   tx, full refund)**, `amount=0` bets-everything sentinel,
   oversized-bet CLAMP + `min_amount` all-or-nothing revert, bounds/dust
   rejections, ViewMaxBet vs math, LP appreciation after losses (`roll_test`);
-  factory clone independence + per-clone identity, re-init + table registry (`factory_test`); contract-wrapped Roll rejected while top-level accepted (`flash_attack_test`); per-opcode fuel ≤ 3.5M floor incl. CreateTable ≈ 19% (`fuel_audit_test`); two same-block wins, **a block of max wins ends ≥ 80% of its start bank, and loss-funded wins above 20% still keep ≥ 80%**, full-withdraw→dormant→revive (`scenario_test`).
+  factory clone independence + per-clone identity, re-init + table registry (`factory_test`); contract-wrapped Roll rejected while top-level accepted (`flash_attack_test`); fuel ≤ 3.5M floor for 11 of 16 opcodes — Roll, Deposit, CreateTable, Donate, WithdrawFees, SetExitFee and views 101–105, not Init (0), Withdraw (3), 99/100 or ViewExitFee (106) — incl. CreateTable ≈ 19% (`fuel_audit_test`); two same-block wins, **a block of max wins ends ≥ 80% of its start bank, and loss-funded wins above 20% still keep ≥ 80%**, full-withdraw→dormant→revive (`scenario_test`).
 
 ## Relationship to arbuzino
 
@@ -302,5 +319,5 @@ conventions — but is a **standalone repo** with no runtime link to arbuzino
 (no fee bridge to vault 4:777). The fee model is deliberately simpler than
 arbuzino's accrue-then-sweep bridge: each table keeps its own single-token fee and
 the operator pulls it directly with an auth key — no sink contract holding funds,
-no external call. **LPs earn the edge, the operator earns the 2% LP-exit fee.**
+no external call. **LPs earn the edge, the operator earns the LP-exit fee (≤ 2%).**
 Bet currency differs too: 2:69 (H2S) on mainnet vs Fireball's DIESEL.

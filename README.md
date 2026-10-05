@@ -22,7 +22,9 @@ The bankroll belongs to its liquidity providers. LPs deposit into the bank, get
 DICE shares and earn the whole 1% house edge, while caps derived from the Kelly
 criterion keep any run of wins from draining the bank — so LPs come out ahead in
 the long run. Every rule is compiled into immutable contracts: no upgrade path,
-no pause switch, no admin key over the game or its funds.
+no pause switch, no admin key over the game, its bank or LP shares — the one
+privileged key, the operator's, only collects the LP exit fee and tunes it within
+0–2%.
 
 <p align="center">
   <a href="#mainnet">Mainnet</a> ·
@@ -170,13 +172,16 @@ flowchart LR
 
 > **Miner caveat (accepted).** A miner who finds a block can withhold it if its
 > rolls lose them money. Doing so forfeits the block reward, and the 20% budget
-> caps what any single block can take.
+> caps what any single published block can take — but near-certain bets let a
+> miner discard only the rare losing block, so withholding pays once the bank is
+> worth more than about two block rewards (~6 BTC). Treat that as a soft ceiling
+> on bank size; details in the [spec](docs/SPEC.md#miner-caveat-accepted-immutable).
 
 ## The operator and the exit fee
 
 Players pay nothing beyond the 1% edge. The operator's only income is the
-**exit fee** an LP pays when withdrawing: up to **2%**, a ceiling compiled into
-the contract that nobody can raise.
+**exit fee** an LP pays when withdrawing: operator-set, currently **2%**, and never
+above **2%** — a ceiling compiled into the contract that nobody can raise.
 
 - **Every change waits 1008 blocks (~a week)** before it applies — up or down.
   LPs always see a new fee coming and can leave at the old one first.
@@ -185,8 +190,8 @@ the contract that nobody can raise.
   `WithdrawFees`, which never touches the bank or LP shares.
 - Access is the **Dice Operator** key, `4:57005`. Three interchangeable units
   were minted once — one to use, two spares — and any one of them is enough.
-  Losing all three would only freeze future fee collection: LP and player flows
-  never touch the key.
+  Losing all three would only freeze future fee collection and fee changes: LP
+  and player flows never touch the key.
 
 ```mermaid
 stateDiagram-v2
@@ -264,8 +269,16 @@ cargo test --lib -- --test-threads=1    # 31 integration tests on the real alkan
 ```
 
 The build strips every machine-local path, so anyone can check the mainnet
-bytecode: check out `452d0a1`, run `./scripts/build-wasms.sh` (rustc
-`nightly-2026-03-21`, Homebrew clang 20.1.4) and compare:
+bytecode. A byte-exact rebuild needs the sources of the deploy commit `452d0a1`, its pinned Rust
+toolchain (`rust-toolchain.toml`: rustc `nightly-2026-03-21`) **and the same C
+compiler**: `secp256k1-sys` compiles C code into the wasm, and the deployed bytes
+were built with Homebrew LLVM clang 20.1.4 (recorded in
+[`deployments/mainnet.env`](deployments/mainnet.env)) — a different clang version
+produces different bytes. The contract sources, `Cargo.lock` and the toolchain pin
+are unchanged since `452d0a1`, so the current `main` builds the same bytes. Run
+`./scripts/build-wasms.sh` on a Mac with Homebrew LLVM 20.1.4, or point it at that
+clang anywhere else with `CC_wasm32_unknown_unknown=/path/to/clang` (this also
+works at `452d0a1`, whose script hard-codes `CC`), and compare:
 
 | wasm | sha256 |
 |---|---|
@@ -278,10 +291,13 @@ bytecode: check out `452d0a1`, run `./scripts/build-wasms.sh` (rustc
 alkanes/dice-game            the game contract (a thin wrapper)
 alkanes/dice-game-runtime    all of the game logic
 alkanes/dice-operator        the operator key contract
+alkanes/dice-attacker        a test-only fixture for the flash-attack test, never deployed
 crates/dice-math             payouts, caps and share pricing, as pure math
 src/tests                    integration tests on the alkanes harness
 scripts                      build, deploy and regtest helpers
+deployments/mainnet.env      the mainnet deployment record: ids, txids, toolchain, wasm hashes
 docs/SPEC.md                 the design document — start here
+docs/img                     the README figures and their generator, make_figures.py
 ```
 
 ## Status and risks
