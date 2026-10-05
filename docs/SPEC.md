@@ -1,18 +1,24 @@
 # Dice — instant dice on ALKANES
 
-Status: **implemented** (contract + math + integration tests; regtest e2e
-pending). Name: **Dice** — renamed from "Cheeky Bricky" on 2026-10-01 (the
-crates, the wasm and the on-chain names: shares show as "Dice"/"DICE", the
-operator key as "Dice Operator"/"DOP"). The mainnet main table (the template
-itself) is in FARTANE, 2:69, symbol H2S.
+Status: **live on mainnet since 2026-10-02** — the game (template + registry +
+the H2S table) at `4:64206` (block 969539), the operator key at `4:57005`
+(block 969541); the full record (txids, wasm sha256, toolchain) is
+`deployments/mainnet.env`. Name: **Dice** — renamed from "Cheeky Bricky" on
+2026-10-01 (the crates, the wasm and the on-chain names: shares show as
+"Dice"/"DICE", the operator key as "Dice Operator"/"DOP"). The mainnet main
+table (the template itself) is in FARTANE, 2:69, symbol H2S.
 
 Code map: `crates/dice-math` (pure math + the Kelly/no-ruin proofs),
 `alkanes/dice-game-runtime` (all logic, trait `DiceBase`),
-`alkanes/dice-game` (thin `declare_alkane!` wrapper), `src/tests/`
+`alkanes/dice-game` (thin `declare_alkane!` wrapper),
+`alkanes/dice-operator` (the operator auth key for `WithdrawFees`/`SetExitFee`,
+`4:0xDEAD`),
+`alkanes/dice-attacker` (TEST-ONLY fixture: wraps a Roll in a contract call for
+`flash_attack_test`; never deployed), `src/tests/`
 (integration on the alkanes harness — deterministic win/lose forcing by
 walking txid candidates).
 
-Sister project of [arbuzino/Fireball](../../arbuzino) — same stack (ALKANES metaprotocol,
+Sister project of arbuzino/Fireball — same stack (ALKANES metaprotocol,
 immutable contracts, metashrew regtest), opposite temporal design: Fireball is a
 multi-block pari-mutuel draw; this is a **single-transaction instant game**.
 The bet/bank currency is a single alkane fixed at init and immutable after:
@@ -23,7 +29,7 @@ in the owner's words: minimal-but-nonzero house take, and mechanics that
 mathematically guarantee liquidity providers win long-term. Dice + Kelly cap is
 the construction that actually delivers that (see the theorem below). Earlier
 candidates (coin flip vs pot, progressive 1-of-64 jackpot) are archived in
-[ALTERNATIVES.md](ALTERNATIVES.md)-to-be / git history.
+git history.
 
 ## Core idea
 
@@ -100,8 +106,9 @@ max_bet(T) = cap / (m − 1)
 ```
 
 Full Kelly is the ceiling of sane bankroll sizing: betting *above* `edge · B`
-is overbetting — variance overtakes drift and long-run growth turns negative.
-So 1% is the max, not a knob to push further.
+is overbetting — every step past the Kelly fraction lowers long-run growth, and
+beyond about 2× that fraction variance overtakes drift and growth turns
+negative. So 1% is the max, not a knob to push further.
 
 What this buys, stated honestly:
 
@@ -124,9 +131,10 @@ risks the thin margin) — the high-probability slider end is the volume machine
 Two caps bound a bet's net exposure: the per-bet full-Kelly cap above, and
 the **per-block budget** — aggregate *realized* net payouts per block ≤
 `B · 20%` (`BLOCK_BUDGET_BPS = 2000`; losing bets consume nothing). The
-budget is the miner defense: a miner stuffing their own block and withholding
-on a bad hash extracts at most 20% of B per forfeited block reward — hard and
-expensive to ever collect, hence the generous size. It is deliberately much
+budget is the miner defense: however a miner stuffs their own block, a
+published block can take at most about 20% of B. It does not by itself make
+withholding irrational — see "Miner caveat" for the bank size at which it
+starts to pay. It is deliberately much
 looser than the per-bet cap (20 max wins deep at full Kelly; ruin-impossibility
 only needs per-block loss < 100%; growth-optimality is about the typical
 case, and a many-max-winners block is a tail event).
@@ -134,8 +142,11 @@ case, and a many-max-winners block is a tail event).
 A bet that exceeds what remains is **clamped down to fit** — the excess comes
 back as change and the roll still happens — instead of reverting. The caller
 opts into all-or-nothing with `min_amount`: if the clamped size falls below
-it, revert with a full refund. Hard reverts remain only for bad target, dust
-(`amount < min_bet`), underpayment, or capacity below `min_bet`/`min_amount`.
+it, revert with a full refund. Hard reverts remain only for a contract caller
+(Roll must come from a top-level transaction, caller `{0,0}` — see
+"Flash-attack guard"), a second Roll on the same table in the same transaction
+(see "One Roll per transaction"), bad target, dust (`amount < min_bet`),
+underpayment, or capacity below `min_bet`/`min_amount`.
 
 **What the budget guarantees (external audit, 2026-09-30).** The budget is
 recomputed from the *current* bank on every Roll, and a losing bet grows the
@@ -149,8 +160,7 @@ Withdraw takes the LP's own share out (not a payout), so those are outside it
 only if `paid_this_block + exposure ≤ 0.2 · bank_now`, and
 `bank_now = B₀ + L − W_prev` (losses so far `L ≥ 0`, earlier wins `W_prev`), so
 after the last win `W ≤ 0.2 · (B₀ + L − W_prev)` and the end-of-block bank
-`B₀ + L − W ≥ 0.8 · (B₀ + L) + 0.2 · W_prev ≥ 0.8 · B₀`. A 200k-block
-simulation of random loss/max-win orderings bottoms out at 0.87 · B₀, and two
+`B₀ + L − W ≥ 0.8 · (B₀ + L) + 0.2 · W_prev ≥ 0.8 · B₀`. Two
 integration tests chain real Rolls in one block (`scenario_test`): max wins until
 the budget runs out end at 0.83 · B₀; wins → a ~bank-sized loss → wins pay out
 0.33 · B₀ net (above 20%, funded by the loss) and still end above B₀. Freezing
@@ -174,21 +184,28 @@ player's wallet. Both modes coexist in the UI as a toggle.
 ## LP side: the house is a token
 
 - `Deposit { amount }`: bet token in → mint fungible **share units of the game
-  alkane itself** (same self-mint machinery as the existing vault; no NFTs).
-  Shares minted = `amount · total_shares / B` (1:1 bootstrap).
-- `Withdraw { shares, min_payout }`: burn shares → gross `shares · B / total_shares`
-  of the bet token; **the current exit fee (`/exit_bps`, 0..2%) is retained in
+  alkane itself** (the contract mints units of itself; no NFTs). With `B` the
+  bank and `S` the share supply, shares minted =
+  `floor(amount · (S + 10^6) / (B + 1))` — the virtual offset
+  `VIRTUAL_SHARES = 10^6`, `VIRTUAL_BANK = 1` (`dice-math`) — so a first
+  deposit into an empty table mints `amount · 10^6`.
+- `Withdraw { shares, min_payout }`: burn shares → gross
+  `floor(shares · (B + 1) / (S + 10^6))` of the bet token (always ≤ `B`);
+  **the current exit fee (`/exit_bps`, 0..2%) is retained in
   `/fee_accum` and the LP receives the rest** (see "Operator revenue"). The bank is
   debited by the full gross; the fee just moves from `/bank` into `/fee_accum`
   (both bet-token, both held by the contract). `min_payout` is the slippage floor
-  applied to the NET amount the LP receives (share price moves with every bet;
-  pattern ported from the vault's redeem). Overpaid shares returned as change.
-- Share price `B / total_shares` only changes through game results and
-  donations — deposits/withdrawals are neutral by construction (`mul_div` from
-  `fireball-vault-math`, reused).
+  applied to the NET amount the LP receives (share price moves with every bet).
+  Overpaid shares returned as change.
+- Share price `(B + 1) / (S + 10^6)` only changes through game results and
+  donations — deposits/withdrawals are neutral by construction, up to floor
+  rounding that favors the bank (`mul_div`, the 256-bit exact `floor(a·b/d)`
+  defined in `dice-math`).
 - Anytime in, anytime out: with no pending bets there is nothing to lock.
-- ⚠ **First-depositor inflation attack** (ERC4626 classic): must be neutralized
-  before deploy — virtual shares offset or a burned minimum initial deposit.
+- **First-depositor inflation attack** (ERC4626 classic): neutralized by the
+  virtual offset above plus a revert on zero-share deposits — the attack is a
+  guaranteed loss for the attacker (`inflation_attack_is_unprofitable`,
+  `equal_value_deposits_mint_equal_stakes`, `withdraw_round_trip_never_profits`).
   This contract holds withdrawable principal; the audit bar is above Fireball's.
 - `Donate { amount }`: grows B without minting — a gift to LPs (marketing
   pumps, treasury seeding).
@@ -240,9 +257,12 @@ an operator credential (std-proxy pattern — no external auth factory). Whoever
 holds one is the operator. Three, so two spares can live apart: lose all three and
 fee access is gone forever (immutable); any one stolen is full operator power (the
 fees, and the exit fee within 0..2%). LP and player flows never touch the keys, so
-a lost key can never freeze the game. It must be
-deployed at the hardcoded slot BEFORE the game (same "deploy your sink first"
-requirement any hardcoded-id design has).
+a lost key can never freeze the game. Deploy order does not matter: the game
+never calls or resolves the operator contract — it only compares incoming
+alkane ids to `4:0xDEAD` — so the slot just has to be free when the operator is
+deployed (whoever deploys there holds the keys; `deploy-mainnet.sh` re-checks
+the slot right before that broadcast). Mainnet deployed the game first (block
+969539) and the operator at block 969541.
 
 ## Factory (the PERMAFROST pattern)
 
@@ -274,16 +294,21 @@ for them. Guards: the bet token must not be the instance itself, and init
 runs once per instance (`/initialized`, re-init attack tested). Verified
 end-to-end in `factory_test`.
 
-## Privileged capability: only fee collection
+## Privileged capability: only the exit fee
 
 The game has **no admin, no owner, no upgrade path, no edge knob** — an earlier
 dynamic-edge auth token was removed with the whole machinery (2026-08-27). The
-single privileged action is `WithdrawFees`: the operator collecting the 2% exit
-fees a table has *already accrued*, gated by possession of the hardcoded
-`OPERATOR_AUTH_ID` key. It cannot change any parameter, cannot touch the bank or
-LP shares, and cannot block a withdrawal — it only moves already-earned fee out.
+only privileged actions are the two operator ops, both gated by possession of
+the hardcoded `OPERATOR_AUTH_ID` key: `WithdrawFees` (opcode 6) collects the
+exit fees a table has *already accrued* in `/fee_accum`, and `SetExitFee`
+(opcode 7) schedules a new LP-exit fee within 0..2% that takes effect only
+`EXIT_FEE_DELAY = 1008` blocks later. That is all the operator controls: fee
+revenue and the fee's level. Neither op can exceed the immutable 2% ceiling,
+skip the delay, change the edge or the caps, touch the bank, LP shares or any
+player flow, or block a withdrawal.
 The keys are three units of a minimal standalone token minted once at deploy;
-guard them (losing all three strands only future fees, never player or LP funds). What is deployed is the
+guard them (losing all three strands only fee revenue and fixes the exit fee at
+its last setting — never player or LP funds). What is deployed is the
 entire game, forever.
 
 ## Storage sketch
@@ -292,7 +317,8 @@ entire game, forever.
 /initialized          u8
 /bet_token            AlkaneId (immutable, init param — mainnet 2:69)
 /name, /symbol        bytes  (immutable, init params — per-instance wallet identity)
-/table/{token_id}     AlkaneId (registry, template only; CreateTable is the sole writer)
+/table/{token_id}     AlkaneId (registry, read on the template only; written by CreateTable
+                      and by init, which self-registers the instance for its own token)
 /bank                 u128   (LP bankroll; deposits + losses + donations − wins − withdrawals)
 /total_shares         u128   (outstanding share units)
 (min_bet is a compile-time constant 1000, not stored)
@@ -302,6 +328,7 @@ entire game, forever.
 /exit_bps_next        u128   (fee scheduled by SetExitFee)
 /exit_bps_at          u128   (its activation height, schedule height + 1008; 0 = none)
 /fee_accum            u128   (accrued LP-exit fees, bet-token; paid out by WithdrawFees)
+/last_roll_txid       [u8; 32] (txid of the last Roll on this table; enforces one Roll per tx)
 /total_bets           u128   (stats)
 /total_wagered        u128   (stats: Σ effective bets)
 /total_won            u128   (stats: Σ payouts)
@@ -363,11 +390,22 @@ version wrapped). Consequences:
 ## Miner caveat (accepted, immutable)
 
 A miner who finds a block can withhold it if the rolls inside lose them money.
-Cost = the full block reward. With the per-block budget, the maximum
-extractable advantage per withheld block is bounded by `20% · B`, so the
-attack stays irrational while `20% · B < block reward` — document the
-resulting soft ceiling on sensible bankroll size rather than pretending it
-away. Same argument as ord#4541's spec.
+Withholding forfeits that block's reward `R` (3.125 BTC subsidy + fees) — less
+for a miner who does not bear the full reward (a pool member paid per share,
+say, where the pool absorbs the loss). The per-block budget caps what a
+*published* block can take at about `20% · B`, but it does not bound the gain
+per *withheld* block: near-certain bets (the ×1.01 end, where a max bet is about
+the whole bank) let a miner discard only the rare block in which a bet loses.
+A miner who bears the full reward therefore profits from withholding once the
+bank is worth more than about `2 · R` (≈ 6.4 BTC at today's subsidy). An earlier
+version of this section put the threshold at `20% · B < R`, i.e. `5 · R`, which
+was too optimistic.
+
+Above that soft ceiling a withholding miner can take up to the per-block budget
+from each block it finds; no block can take the bank below 80% of its
+start-of-block value, and the attack stops paying once the bank falls back under
+the ceiling. LPs should treat about `2 · R` of bank value as the sensible
+bankroll ceiling for a table. The same caveat applies to the ord#4541 scheme.
 
 ## Flash-attack guard (critical, immutable)
 
@@ -386,7 +424,9 @@ cannot conditionally revert on the outcome.
 
 Legit flows are unaffected: **mint-and-roll** chains two SEPARATE top-level
 protostones (mint, then Roll — each caller `{0,0}`), never a contract call;
-`CreateTable` calls `Deposit` (not Roll) on the clone. Positive path proven by every roll test (all top-level); the negative
+`CreateTable` never calls Roll — the only call it makes on the new table is the
+factory clone's init (opcode 0, nothing attached), so the table is born empty.
+Positive path proven by every roll test (all top-level); the negative
 path is proven by `flash_attack_test` — a test-only `dice-attacker`
 alkane forwards a Roll from its own contract context and the call reverts
 (no bet recorded, bank untouched, DIESEL refunded).
@@ -410,7 +450,7 @@ refunded).
 
 2026-08-25:
 1. **No per-bet protocol fee**: the originally-drafted 0.1% → vault 4:777 bridge
-   was REMOVED on the owner's call ("зарабатывать будут только LP"). Superseded
+   was REMOVED on the owner's call ("only LPs will earn"). Superseded
    2026-08-27 by a **2% LP-exit fee to the operator** (see item 10) — the
    player-facing edge is still 100% LP; the operator earns only on withdrawals.
 2. **First-depositor mitigation**: OZ-style virtual offset
@@ -442,7 +482,7 @@ refunded).
 
 2026-08-27 (the immutability pass):
 9. **Auth token REMOVED, edge fixed at 1% forever** (`EDGE_BPS = 100`, the
-   owner: "без auth токена — сразу минимальный процент"). No privileged
+   owner: "no auth token — the minimum fee right away"). No privileged
    capability on the game remains; the 4:0xffed dependency is gone. The
    floor multiplier was relaxed to **×1.01** (`MIN_WIN_MULT_BPS = 10_100`)
    so the slider reaches the classic **98%** ceiling (T = 64 238) right
@@ -461,9 +501,11 @@ refunded).
     Hardcoded rather than an init arg — keeps the game's init signature and the
     test suite stable, and there is nothing to redirect (auth is possession, the
     payout always goes to the caller). Kept off the LP-withdraw path so a lost key
-    can never freeze exits.
+    can never freeze exits. Superseded in part: the fixed 2% became an
+    operator-set fee within 0..2% (item 11, timelocked by item 18), and the key
+    moved to `4:0xDEAD` (item 15).
 11. **Exit fee made adjustable, cap kept immutable** (owner's call, 2026-08-27:
-    "менять комиссию но чтобы максимум всё равно всегда был 2%, минимум 0"). The
+    "let the fee change, but the maximum must always stay 2% and the minimum 0"). The
     live fee moved into `/exit_bps` (init = 200) with an operator-only `SetExitFee`
     (opcode 7) that reverts above `EXIT_BPS_MAX = 200`; `exit_bps()` clamps on read
     too. So the operator can tune the fee anywhere in `[0, 2%]` per table, but the
@@ -538,11 +580,17 @@ The registry's one-table-per-token rule means a bad/mis-scaled canonical
 table for a token is permanent — but anyone can still spin a "wildcat" clone
 for their own use; it just won't be the registered one.
 
-## Still open before mainnet
+## Still open
 
-1. Regtest e2e run against a LIVE node (`scripts/e2e-test.sh` is written and
-   ready; not yet exercised against docker in this environment). Fuel audit
-   (`fuel_audit_test`, CreateTable ≈ 19% of the 3.5M floor) and the
-   block-budget / full-withdraw scenarios (`scenario_test`) are DONE. The same
-   goes for a `deploy-mainnet.sh` rehearsal (`NETWORK=regtest`).
-3. Bank seeding plan (Donate from treasury vs LP-first launch).
+Mainnet has been live since 2026-10-02 (see the status line). Done before
+launch: the fuel audit (`fuel_audit_test`, CreateTable ≈ 19% of the 3.5M
+floor), the block-budget / full-withdraw scenarios (`scenario_test`) and a
+`deploy-mainnet.sh` rehearsal on regtest (`NETWORK=regtest`, 2026-10-01).
+
+1. Bank seeding plan (Donate from treasury vs LP-first launch): the H2S table,
+   like every table, is born empty (bank 0) and stays dormant until its bank
+   is funded.
+2. Regtest e2e run against a LIVE node (`scripts/e2e-test.sh`: deposit →
+   rolls → withdraw → `WithdrawFees`) — written and ready, not yet recorded as
+   run. The mainnet deploy was verified through its views and deploy traces;
+   the LP and player flows are proven on the alkanes test harness.
