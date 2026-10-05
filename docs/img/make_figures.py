@@ -2,7 +2,7 @@
 """Regenerate the README figures: python3 docs/img/make_figures.py
 
 Writes banner, roll-under and odds as -light/-dark SVG pairs (the README picks
-one with <picture> + prefers-color-scheme). Colors follow the frontend mock's
+one with <picture> + prefers-color-scheme). Colors follow the game UI's
 palette; the chart hues were checked with the dataviz palette validator
 (light #e63800/#00a565 on #fcfbf8, dark #f25022/#12a96c on #18171a: all pass).
 The numbers come from the contract: 65,536 roll outcomes, 1% edge, targets

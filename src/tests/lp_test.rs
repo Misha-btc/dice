@@ -4,7 +4,7 @@
 //! the on-chain wiring (mint/burn of self-units, change returns, refunds).
 
 use crate::test_log;
-use crate::tests::foundation::{deploy_dice, game_id, mint_diesel, MIN_BET};
+use crate::tests::foundation::{deploy_dice, game_id, mint_diesel};
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, get_sheet_by_outpoint, index_block,
     AlkaneId, Cellpack, OutPoint, DIESEL_ID,

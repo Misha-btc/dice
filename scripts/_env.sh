@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Shared environment for Dice regtest scripts. Source, don't execute.
-# Mirrors arbuzino's per-script boilerplate (alkanes-cli resolution etc.).
 
 GAME_BLOCK=4
 GAME_TX=64206              # 0xFACE — the same slot as mainnet
-# Operator auth key — the game's hardcoded WithdrawFees gate (OPERATOR_AUTH_ID
-# = 4:0xDEAD). Must match the runtime constant; deploy it BEFORE the game. The
-# deployer receives three interchangeable key units (any one authorizes).
+# Operator auth key — the game's hardcoded WithdrawFees/SetExitFee gate
+# (OPERATOR_AUTH_ID = 4:0xDEAD). Must match the runtime constant; deploy order
+# doesn't matter. The deployer receives three interchangeable key units (any
+# one authorizes).
 OPERATOR_BLOCK=4
 OPERATOR_TX=57005          # 0xDEAD
 # Bet/bank currency (immutable init param of the game). Regtest defaults to

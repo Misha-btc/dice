@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Полный reset Docker-regtest окружения для чистого деплоя.
+# Full reset of the Docker regtest environment for a clean deploy.
 #
-# `alkanes-rs` поднимает bitcoind + metashrew через docker-compose.
-# Здесь мы:
-#   1. docker compose down -v   (полный wipe state)
-#   2. docker compose up -d     (свежий старт)
-#   3. ждём пока metashrew_height станет ≤ 1 (значит DB чистая)
+# alkanes-rs brings up bitcoind + metashrew with docker compose. This script:
+#   1. docker compose down -v   (wipes all state)
+#   2. docker compose up -d     (fresh start)
+#   3. waits until metashrew_height is <= 1 (the DB is clean)
 #
-# Используется ПЕРЕД ./scripts/deploy-regtest.sh — особенно после
-# изменения immutable констант (POOL_*_BPS, multipliers и т.п.).
+# Run it BEFORE ./scripts/deploy-regtest.sh — especially after changing any
+# compiled-in constant (a fresh deploy is the only way to exercise it).
 #
 # Env:
-#   ALKANES_RS    — путь к каталогу alkanes-rs (где лежит docker-compose.yml)
+#   ALKANES_RS    — path to the alkanes-rs checkout (where docker-compose.yml lives)
 #   RPC_URL       — default http://127.0.0.1:18888
 
 set -uo pipefail

@@ -31,20 +31,20 @@ fail() { echo "  ✗ $1"; exit 1; }
 echo "═══ Dice E2E Smoke Test ═══"
 echo ""
 
-echo "[1/5] Deploy + mine DIESEL"
+echo "[1/6] Deploy + mine DIESEL"
 bash "$SCRIPT_DIR/deploy-regtest.sh" --build > /tmp/dice-e2e-deploy.log 2>&1 \
     && ok "deployed (see /tmp/dice-e2e-deploy.log)" || fail "deploy"
 # a couple more free mints so we have DIESEL to stake and bet
 echo y | $CLI alkanes execute "[2,0,77]:v0:v0" --from p2tr:0 --change p2tr:0 --alkanes-change p2tr:0 --mine --fee-rate 1 > /dev/null 2>&1 || true
 echo ""
 
-echo "[2/5] Become the house: deposit 100_000_000 DIESEL"
+echo "[2/6] Become the house: deposit 100_000_000 DIESEL"
 bash "$SCRIPT_DIR/deposit.sh" 100000000 > /tmp/dice-e2e-dep.log 2>&1 \
     && ok "deposited" || fail "deposit"
 bash "$SCRIPT_DIR/view.sh" bank
 echo ""
 
-echo "[3/5] Play: 3 rolls at 50% (coin flip)"
+echo "[3/6] Play: 3 rolls at 50% (coin flip)"
 for i in 1 2 3; do
     echo "  roll #$i ..."
     bash "$SCRIPT_DIR/roll.sh" 32768 1000000 > "/tmp/dice-e2e-roll$i.log" 2>&1 || true
@@ -55,7 +55,7 @@ bash "$SCRIPT_DIR/view.sh" stats
 bash "$SCRIPT_DIR/view.sh" bank
 echo ""
 
-echo "[4/5] Withdraw half your shares"
+echo "[4/6] Withdraw half your shares"
 # Read total_shares from ViewBank (field 2) and burn half.
 SHARES=$(bash "$SCRIPT_DIR/view.sh" bank | awk '/total_shares/ {print $2}')
 HALF=$(python3 -c "print(int(${SHARES:-0})//2)")
@@ -68,7 +68,7 @@ fi
 bash "$SCRIPT_DIR/view.sh" bank
 echo ""
 
-echo "[5/6] Operator collects the accrued 2% exit fee"
+echo "[5/6] Operator collects the accrued exit fee"
 bash "$SCRIPT_DIR/withdraw-fees.sh" > /tmp/dice-e2e-fees.log 2>&1 \
     && ok "operator withdrew exit fees with the auth key 4:$OPERATOR_TX" \
     || echo "  (no fees accrued, or see /tmp/dice-e2e-fees.log)"

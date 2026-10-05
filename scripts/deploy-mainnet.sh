@@ -16,7 +16,7 @@
 # can't be overwritten (CREATERESERVED onto an occupied one reverts), so a
 # clean trace of OUR operator deploy proves the key contract is ours.
 #
-# Hardened like arbuzino/scripts/deploy-coldstern-mainnet.sh:
+# Hardened:
 #   - FEE_RATE and DEPLOY_PASSWORD required (no silent defaults); the game
 #     slot is the agreed 4:64206 unless GAME_TX overrides it; no --mine on
 #     mainnet (wait_for_deploy polls traces)
@@ -68,7 +68,7 @@ case "$NETWORK" in
     mainnet)
         RPC_URL="${RPC_URL:-https://mainnet.subfrost.io/v4/subfrost}"
         # blockstream, not mempool.space: alkanes-cli (both the develop build and
-        # the one fire deployed with) fails to decode mempool.space's UTXO
+        # the release used for the mainnet deploy) fails to decode mempool.space's UTXO
         # responses ("error decoding response body", 2026-10-01)
         ESPLORA_URL="${ESPLORA_URL:-https://blockstream.info/api}"
         WALLET_FILE="${WALLET_FILE:-$HOME/.alkanes/wallet-dice-mainnet.json}"
@@ -387,7 +387,10 @@ $dirty"
         *) die "active toolchain $active is not the pinned $pinned (unset RUSTUP_TOOLCHAIN?)" ;;
     esac
     RUSTC_VERSION="$(cd "$PROJECT_DIR" && rustc --version)"
-    CLANG_VERSION="$(/opt/homebrew/opt/llvm/bin/clang --version 2>/dev/null | head -1 || echo unknown)"
+    # the C compiler build-wasms.sh picks: $CC, else Homebrew LLVM, else clang
+    local cc="${CC:-}"
+    [ -n "$cc" ] || { [ -x /opt/homebrew/opt/llvm/bin/clang ] && cc=/opt/homebrew/opt/llvm/bin/clang; } || cc=clang
+    CLANG_VERSION="$("$cc" --version 2>/dev/null | head -1 || echo unknown)"
 
     log "building wasm with $RUSTC_VERSION (log: $BUILD_LOG)..."
     mkdir -p "$(dirname "$BUILD_LOG")"

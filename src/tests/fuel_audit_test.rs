@@ -1,15 +1,16 @@
-//! Fuel audit — the EXACT `gas_used` each opcode consumes, measured with
+//! Fuel audit — the EXACT `gas_used` of the game's opcodes (all but Init (0),
+//! Withdraw (3), the 99/100 name probes and ViewExitFee (106)), measured with
 //! `alkanes::view::simulate_parcel` against committed state (not tx-capped).
-//! Every opcode must fit the WORST-CASE per-tx floor `MINIMUM_FUEL_CHANGE1 =
+//! Every measured opcode must fit the WORST-CASE per-tx floor `MINIMUM_FUEL_CHANGE1 =
 //! 3_500_000` (on mainnet a tx gets `max(3.5M, block_fuel·txsize/blocksize)`,
 //! so 3.5M is the floor to clear).
 //!
 //! The load-bearing check is **CreateTable**: it clones the whole ~260 KB
-//! game WASM (`[6, own_tx]`), runs the clone's init, makes two identity
-//! staticcalls to the token (99/100), and sub-calls the clone's Deposit — by
-//! far the heaviest path. If anything blows the budget, it is this.
+//! game WASM (`[6, own_tx]`), runs the clone's init and makes two identity
+//! staticcalls to the token (99/100) — by far the heaviest path. If anything
+//! blows the budget, it is this.
 
-use crate::tests::foundation::{deploy_dice, game_id, mint_diesel, GAME_TX, MIN_BET, OPERATOR_TX};
+use crate::tests::foundation::{deploy_dice, game_id, mint_diesel, GAME_TX, OPERATOR_TX};
 use crate::tests::helpers::{
     clear_test_environment, create_op_block_with_token_input, create_operation_block, index_block,
     AlkaneId, Cellpack, OutPoint, DIESEL_ID,
@@ -141,7 +142,7 @@ fn fuel_audit_all_opcodes() -> Result<()> {
         "Roll (1)",
         measure(&g, vec![1, 32_768, bet, 0], vec![rune(DIESEL_ID, bet)], 880_050)?,
     ));
-    // THE HEAVY ONE: clone + init + 2 staticcalls + sub-deposit.
+    // THE HEAVY ONE: clone + init + 2 identity staticcalls.
     rows.push((
         "CreateTable (4)",
         measure(&g, vec![4, wild.block, wild.tx], vec![], 880_050)?,

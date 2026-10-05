@@ -151,8 +151,8 @@ fn test_reinit_is_rejected() -> Result<()> {
         h,
         Cellpack {
             target: game_id(),
-            // attacker tries to re-point the game at another token with a
-            // different min_bet and their own branding
+            // attacker tries to re-init the game onto another token with
+            // their own branding
             inputs: vec![0, 4, 0x999, pack("EVIL"), pack("EVL")],
         },
         None,
@@ -175,7 +175,7 @@ fn test_factory_clone_spins_an_independent_game() -> Result<()> {
 
     // Clone the template via the factory (block 6) with its own identity.
     // (The bet token is DIESEL again — the only harness-mintable token — but
-    // the clone still gets its own independent bank/shares/auth.)
+    // the clone still gets its own independent bank and shares.)
     let clone_block = create_operation_block(
         h,
         Cellpack {
@@ -187,8 +187,7 @@ fn test_factory_clone_spins_an_independent_game() -> Result<()> {
     index_block(&clone_block, h)?;
     h += 1;
 
-    // Find the clone among block-2 instances by its custom name (the other
-    // block-2 residents are auth-token clones with "AUTH …" names).
+    // Find the clone among block-2 instances by its custom name.
     let mut clone = None;
     for tx in 0..16u128 {
         let id = AlkaneId { block: 2, tx };

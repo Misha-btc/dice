@@ -72,8 +72,8 @@ fi
 echo "Deploying dice-operator (fee-withdrawal auth key, 4:$OPERATOR_TX)..."
 # Init (opcode 0) mints THREE interchangeable auth-key units to your deploy
 # address — any one can withdraw fees / set the exit fee on every table, so keep
-# the spares apart and guard all three. Deploy BEFORE the game so
-# the game's hardcoded OPERATOR_AUTH_ID resolves.
+# the spares apart and guard all three. Deploy order doesn't matter: the game
+# only compares incoming alkane ids against its hardcoded OPERATOR_AUTH_ID.
 check_success "dice-operator (4:$OPERATOR_TX) + init" \
     "$(run "[3,$OPERATOR_TX,0]:v0:v0" "" "$WASM_DIR/dice_operator.wasm")"
 echo ""

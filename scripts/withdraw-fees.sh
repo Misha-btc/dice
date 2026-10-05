@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Operator: withdraw a table's accrued 2% LP-exit fees (in the bet token).
+# Operator: withdraw a table's accrued LP-exit fees (in the bet token).
 # Requires the operator auth key (1 of the 3 units of 4:OPERATOR_TX minted to
 # you at deploy) — it's routed into the call and returned alongside the payout.
 # One key drains every table you run; pass a different TABLE for a clone.

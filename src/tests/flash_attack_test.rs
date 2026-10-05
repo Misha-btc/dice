@@ -11,7 +11,7 @@
 //!     caller, so the revert is the guard firing.
 
 use crate::test_log;
-use crate::tests::foundation::{deploy_dice, game_id, mint_diesel, MIN_BET};
+use crate::tests::foundation::{deploy_dice, game_id, mint_diesel};
 use crate::tests::helpers::{
     clear_test_environment, create_deployment_block, create_op_block_with_token_input,
     get_sheet_by_outpoint, index_block, AlkaneId, Block, Cellpack, OutPoint, DIESEL_ID,

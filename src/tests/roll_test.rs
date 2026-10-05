@@ -222,7 +222,7 @@ fn test_zero_amount_bets_everything_sent() -> Result<()> {
     //
     // Harness note: the whole outpoint balance reaches the call regardless of
     // the edict amount, so to model a small unknown "mint" we deposit almost
-    // the entire free-mint into the bank and play with the 3M remainder.
+    // the entire free-mint into the bank and play with the 1M remainder.
     let big_bank = 311_500_000u128; // mint 312.5M − 1M "mint-sized" leftover
     let (bank_op, leftover, h) = setup_with_bank(big_bank)?;
     assert_eq!(leftover, 1_000_000, "test premise: small leftover to stake");

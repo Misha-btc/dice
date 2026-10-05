@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # LP out: burn SHARES (DICE, units of 4:64206) for their pro-rata slice of the
-# bank, MINUS a 2% exit fee (you receive 98%; the fee accrues in the table's
-# fee_accum and is later collected by the operator). MIN_PAYOUT is a slippage
+# bank, MINUS the LP-exit fee in force (operator-set within 0..2%, currently 2%;
+# the fee accrues in the table's fee_accum and is later collected by the
+# operator). MIN_PAYOUT is a slippage
 # floor on the NET amount you receive (0 = off).
 #
 # Usage: ./scripts/withdraw.sh SHARES [MIN_PAYOUT]

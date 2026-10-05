@@ -1,4 +1,4 @@
-//! Test helpers for Fireball — adapted from fire/src/tests/helpers.rs.
+//! Test helpers for the Dice integration tests (adapted from the arbuzino/Fireball harness).
 //! Minimal subset needed for cellpack-based contract tests.
 
 pub use crate::test_log;
